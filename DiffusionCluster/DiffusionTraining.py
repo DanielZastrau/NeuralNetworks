@@ -10,37 +10,6 @@ from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
 from DiffusionUNetExplainAI import Unet
 
-
-# model = ConditionalUNet(n_channels=1, n_classes=1)
-model = Unet()
-
-transform = v2.Compose([
-    v2.ToImage(), 
-    v2.ToDtype(torch.float32, scale=True), # Scales to [0, 1]
-    v2.Grayscale(num_output_channels=1),
-    v2.Normalize(mean=[0.5], std=[0.5])    # Shifts to [-1, 1]
-])
-
-training_data = datasets.MNIST(
-    root="/fast/zastrau/data",
-    train=True,
-    download=True,
-    transform=transform
-)
-
-test_data = datasets.MNIST(
-    root="/fast/zastrau/data",
-    train=False,
-    download=True,
-    transform=transform
-)
-
-batch_size = 512
-
-# Create data loaders.
-train_dataloader = DataLoader(training_data, batch_size=batch_size, num_workers=4, shuffle=True)
-test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=4)
-
 # positive increasing time schedule
 def beta(t: torch.Tensor) -> torch.Tensor:
     """In Sohl-Dickstein 2015 they use a linear schedule with a step of 1 / T"""
@@ -110,40 +79,6 @@ def loss_fn(model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
 
     return loss
 
-# Define step counts
-epochs = 40
-batches_per_epoch = len(train_dataloader)
-total_steps = epochs * batches_per_epoch
-
-# Dedicate the first 5% of total iterations to warming up
-warmup_steps = int(total_steps * 0.05) 
-
-# 1. Initialize optimizer with the TARGET scaled learning rate
-target_lr = 5.6e-4
-optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=1e-4)
-
-# 2. Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
-warmup_scheduler = LinearLR(
-    optimizer, 
-    start_factor=1e-8, 
-    end_factor=1.0, 
-    total_iters=warmup_steps
-)
-
-# 3. Decay: Cosine annealing for the remainder of training
-cosine_scheduler = CosineAnnealingLR(
-    optimizer, 
-    T_max=(total_steps - warmup_steps), 
-    eta_min=1e-5
-)
-
-# 4. Chain the schedulers
-scheduler = SequentialLR(
-    optimizer, 
-    schedulers=[warmup_scheduler, cosine_scheduler], 
-    milestones=[warmup_steps]
-)
-
 def train(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
           optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -188,16 +123,81 @@ def test(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, to
     print(f"Test Avg loss: {test_loss:>8f} \n")
 
 
-# train the model
-torch.autograd.set_detect_anomaly(True)
+if __name__ == "__main__":
 
-for epoch in range(epochs):
-    print(f"Epoch {epoch+1}\n-------------------------------")
+    model = Unet()
 
-    train(train_dataloader, model, loss_fn, optimizer, scheduler)
-    test(test_dataloader, model, loss_fn)
+    transform = v2.Compose([
+        v2.ToImage(), 
+        v2.ToDtype(torch.float32, scale=True), # Scales to [0, 1]
+        v2.Grayscale(num_output_channels=1),
+        v2.Normalize(mean=[0.5], std=[0.5])    # Shifts to [-1, 1]
+    ])
 
-    print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
+    training_data = datasets.MNIST(
+        root="/fast/zastrau/data",
+        train=True,
+        download=True,
+        transform=transform
+    )
 
-    torch.save(model.state_dict(), "model.pth")
-print("Done!")
+    test_data = datasets.MNIST(
+        root="/fast/zastrau/data",
+        train=False,
+        download=True,
+        transform=transform
+    )
+
+    batch_size = 512
+
+    # Create data loaders.
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, num_workers=4, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=4)
+
+    # Define step counts
+    epochs = 40
+    batches_per_epoch = len(train_dataloader)
+    total_steps = epochs * batches_per_epoch
+
+    # Dedicate the first 5% of total iterations to warming up
+    warmup_steps = int(total_steps * 0.05) 
+
+    # 1. Initialize optimizer with the TARGET scaled learning rate
+    target_lr = 5.6e-4
+    optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=1e-4)
+
+    # 2. Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
+    warmup_scheduler = LinearLR(
+        optimizer, 
+        start_factor=1e-8, 
+        end_factor=1.0, 
+        total_iters=warmup_steps
+    )
+
+    # 3. Decay: Cosine annealing for the remainder of training
+    cosine_scheduler = CosineAnnealingLR(
+        optimizer, 
+        T_max=(total_steps - warmup_steps), 
+        eta_min=1e-5
+    )
+
+    # 4. Chain the schedulers
+    scheduler = SequentialLR(
+        optimizer, 
+        schedulers=[warmup_scheduler, cosine_scheduler], 
+        milestones=[warmup_steps]
+    )
+    
+    # train the model
+    torch.autograd.set_detect_anomaly(True)
+
+    for epoch in range(epochs):
+        print(f"Epoch {epoch+1}\n-------------------------------")
+
+        train(train_dataloader, model, loss_fn, optimizer, scheduler)
+        test(test_dataloader, model, loss_fn)
+
+        print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
+
+        torch.save(model.state_dict(), "model.pth")
+    print("Done!")
