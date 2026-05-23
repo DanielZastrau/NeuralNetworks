@@ -201,5 +201,5 @@ if __name__ == "__main__":
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 
-        torch.save(model.state_dict(), "model.pth")
+        torch.save(model.state_dict(), "/work/zastrau/diffusion/model.pth")
     print("Done!")
