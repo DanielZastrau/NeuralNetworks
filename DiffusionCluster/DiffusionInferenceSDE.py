@@ -3,14 +3,13 @@ Execute from within the Diffusion directory
 """
 
 import torch
+from torchvision.utils import make_grid
 
-from DiffusionNeuralNet import ConditionalUNet
-from Diffusion import beta, f, g, h, b
+import matplotlib.pyplot as plt
 
-model = ConditionalUNet(n_channels=1, n_classes=1)
-model.load_state_dict(torch.load("model.pth"))
+from Diffusion import f, g, b
+from DiffusionUNetExplainAi import Unet
 
-N = 2000
 @torch.inference_mode()
 def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
     """Euler-Maruyama sampling"""
@@ -57,22 +56,26 @@ def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
 
     return x
 
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid
+if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# generate 64 images
-samples = sample(batch_size=64, num_steps=N)
-print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
+    model = Unet().to(device)
+    model.load_state_dict(torch.load("/work/zastrau/diffusion/model.pth"))
 
-# if your images are normalized to [-1, 1], rescale to [0, 1]
-samples = (samples + 1.0) / 2.0
-samples = samples.clamp(0.0, 1.0)
+    N = 2000
 
-grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+    # generate 64 images
+    samples = sample(batch_size=64, num_steps=N)
+    print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
 
-plt.figure(figsize=(8, 8))
-plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
-plt.axis("off")
-plt.savefig("./diffusion_samples_8x8.png", dpi=200, bbox_inches="tight", pad_inches=0)
-print("Saved generated samples to ./diffusion_samples_8x8.png")
-plt.close()
+    # if your images are normalized to [-1, 1], rescale to [0, 1]
+    samples = (samples + 1.0) / 2.0
+    samples = samples.clamp(0.0, 1.0)
+
+    grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+    plt.axis("off")
+    plt.savefig("/homes/math/zastrau/NeuralNetworkSamples/diffusion_samples_8x8_SDE.png", dpi=200, bbox_inches="tight", pad_inches=0)
+    plt.close()
