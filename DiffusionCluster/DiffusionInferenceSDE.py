@@ -8,7 +8,7 @@ from torchvision.utils import make_grid
 import matplotlib.pyplot as plt
 
 from Diffusion import f, g, b
-from DiffusionUNetExplainAi import Unet
+from DiffusionUNetExplainAI import Unet
 
 @torch.inference_mode()
 def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
