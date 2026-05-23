@@ -101,11 +101,11 @@ def train(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, t
 
         train_loss += loss.item()
 
-        if batch % 100 == 0:
+        if batch % 10 == 0:
             current_lr = scheduler.get_last_lr()[0]
             print(f"Step {batch}/{len(dataloader)}, LR: {current_lr:.6f}, Loss: {loss.item():.6f}", end="\r")
 
-    print(f"Train Avg loss: {train_loss / len(dataloader):>8f} \n")
+    print(f"\n Train Avg loss: {train_loss / len(dataloader):>8f} \n")
 
 def test(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor]):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
