@@ -12,7 +12,9 @@ model.load_state_dict(torch.load("model.pth"))
 
 N = 2000
 @torch.inference_mode()
-def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:       
+def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
+    """Euler-Maruyama sampling"""
+
     print(f"Sampling {batch_size} images...")
     device = next(model.parameters()).device
 

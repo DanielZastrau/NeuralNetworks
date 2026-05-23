@@ -3,13 +3,11 @@ import numpy as np
 
 import torch
 
-from DiffusionNeuralNet import ConditionalUNet
+from DiffusionUNetExplainAI import Unet
 from Diffusion import beta, f, g, h, b
 
-model = ConditionalUNet(n_channels=1, n_classes=1)
-model.load_state_dict(torch.load("model.pth"))
-
-N = 2000
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
 
 @torch.inference_mode()
 def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
@@ -63,22 +61,28 @@ def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
     
     return x_final
 
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid
+if __name__ == "__main__":
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# generate 64 images
-samples = sample_ode_adaptive(batch_size=64)
-print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
+    model = Unet().to(device)
+    model.load_state_dict(torch.load("/work/zastrau/diffusion/model.pth"))
 
-# if your images are normalized to [-1, 1], rescale to [0, 1]
-samples = (samples + 1.0) / 2.0
-samples = samples.clamp(0.0, 1.0)
+    N = 2000
 
-grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+    # generate 64 images
+    samples = sample_ode_adaptive(batch_size=64)
+    print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
 
-plt.figure(figsize=(8, 8))
-plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
-plt.axis("off")
-plt.savefig("./diffusion_samples_8x8.png", dpi=200, bbox_inches="tight", pad_inches=0)
-print("Saved generated samples to ./diffusion_samples_8x8.png")
-plt.close()
+    # if your images are normalized to [-1, 1], rescale to [0, 1]
+    samples = (samples + 1.0) / 2.0
+    samples = samples.clamp(0.0, 1.0)
+
+    grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+    plt.axis("off")
+    plt.savefig("/work/zastrau/diffusion/diffusion_samples_8x8.png", dpi=200, bbox_inches="tight", pad_inches=0)
+    print("Saved generated samples to /work/zastrau/diffusion/diffusion_samples_8x8.png")
+    plt.close()
