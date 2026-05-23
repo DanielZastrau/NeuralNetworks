@@ -8,7 +8,6 @@ import torch.nn.functional as F
 
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
-from DiffusionNeuralNet import ConditionalUNet
 from DiffusionUNetExplainAI import Unet
 
 
@@ -39,8 +38,8 @@ test_data = datasets.MNIST(
 batch_size = 512
 
 # Create data loaders.
-train_dataloader = DataLoader(training_data, batch_size=batch_size)
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
+train_dataloader = DataLoader(training_data, batch_size=batch_size, num_workers=4, shuffle=True)
+test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=4)
 
 # positive increasing time schedule
 def beta(t: torch.Tensor) -> torch.Tensor:
