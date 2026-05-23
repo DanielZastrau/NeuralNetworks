@@ -124,8 +124,10 @@ def test(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, to
 
 
 if __name__ == "__main__":
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    model = Unet()
+    # Initialize Model and move to device
+    model = Unet().to(device)
 
     transform = v2.Compose([
         v2.ToImage(), 
