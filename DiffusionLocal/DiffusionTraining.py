@@ -6,43 +6,8 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import v2
 import torch.nn.functional as F
 
-from DiffusionUNetExplainAI import Unet
+from DiffusionLocal.DiffusionNeuralNetworkLarge import Unet
 from Diffusion import b
-
-
-# model = ConditionalUNet(n_channels=1, n_classes=1)
-model = Unet()
-
-transform = v2.Compose([
-    v2.ToImage(), 
-    v2.ToDtype(torch.float32, scale=True), # Scales to [0, 1]
-    v2.Grayscale(num_output_channels=1),
-    v2.Normalize(mean=[0.5], std=[0.5])    # Shifts to [-1, 1]
-])
-
-training_data = datasets.MNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=transform
-)
-
-test_data = datasets.MNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=transform
-)
-
-batch_size = 64
-
-# Create data loaders.
-train_dataloader = DataLoader(training_data, batch_size=batch_size)
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
-
-def noisify(x_0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-    # closed form solution
-    return torch.sqrt(1 - b(t)**2) * torch.randn_like(x_0) + b(t) * x_0
 
 def loss_fn(model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
 
@@ -74,9 +39,6 @@ def loss_fn(model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
     loss = F.mse_loss(pred, target)
 
     return loss
-
-optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=2, eta_min=1e-5)
 
 def train(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, torch.Tensor], torch.Tensor],
           optimizer: torch.optim.Optimizer):
@@ -119,15 +81,48 @@ def test(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, to
     print(f"Test Avg loss: {test_loss:>8f} \n")
 
 
-# train the model
-torch.autograd.set_detect_anomaly(True)
+if __name__ == "__main__":
+    # model = ConditionalUNet(n_channels=1, n_classes=1)
+    model = Unet()
 
-epochs = 8
-for epoch in range(epochs):
-    print(f"Epoch {epoch+1}\n-------------------------------")
-    train(train_dataloader, model, loss_fn, optimizer)
-    test(test_dataloader, model, loss_fn)
-    scheduler.step()
-    print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
-    torch.save(model.state_dict(), "model.pth")
-print("Done!")
+    transform = v2.Compose([
+        v2.ToImage(), 
+        v2.ToDtype(torch.float32, scale=True), # Scales to [0, 1]
+        v2.Grayscale(num_output_channels=1),
+        v2.Normalize(mean=[0.5], std=[0.5])    # Shifts to [-1, 1]
+    ])
+
+    training_data = datasets.MNIST(
+        root="../data",
+        train=True,
+        download=True,
+        transform=transform
+    )
+
+    test_data = datasets.MNIST(
+        root="../data",
+        train=False,
+        download=True,
+        transform=transform
+    )
+
+    batch_size = 64
+
+    # Create data loaders.
+    train_dataloader = DataLoader(training_data, batch_size=batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+    # train the model
+    torch.autograd.set_detect_anomaly(True)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-4, weight_decay=1e-4)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=2, eta_min=1e-5)
+
+    epochs = 10
+    for epoch in range(epochs):
+        print(f"Epoch {epoch+1}\n-------------------------------")
+        train(train_dataloader, model, loss_fn, optimizer)
+        test(test_dataloader, model, loss_fn)
+        scheduler.step()
+        print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
+        torch.save(model.state_dict(), "model.pth")
+    print("Done!")
