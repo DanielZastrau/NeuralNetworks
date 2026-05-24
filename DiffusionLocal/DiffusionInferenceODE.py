@@ -3,7 +3,7 @@ import numpy as np
 
 import torch
 
-from DiffusionNeuralNet import ConditionalUNet
+from DiffusionLocal.DiffusionNeuralNetworkSmall import ConditionalUNet
 from Diffusion import beta, f, g, h, b
 
 model = ConditionalUNet(n_channels=1, n_classes=1)
