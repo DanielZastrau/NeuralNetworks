@@ -1,4 +1,5 @@
 from collections.abc import Callable
+import argparse
 
 import torch
 from torchvision import datasets
@@ -124,6 +125,10 @@ def test(dataloader, model: torch.nn.Module, loss_fn: Callable[[torch.Tensor, to
 
 
 if __name__ == "__main__":
+    argparser = argparse.ArgumentParser(description="Train a diffusion model on MNIST")
+    argparser.add_argument("--epochs", type=int, default=100, help="Number of epochs to train")
+    args = argparser.parse_args()
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Initialize Model and move to device
@@ -157,7 +162,7 @@ if __name__ == "__main__":
     test_dataloader = DataLoader(test_data, batch_size=batch_size, num_workers=4)
 
     # Define step counts
-    epochs = 40
+    epochs = args.epochs
     batches_per_epoch = len(train_dataloader)
     total_steps = epochs * batches_per_epoch
 
