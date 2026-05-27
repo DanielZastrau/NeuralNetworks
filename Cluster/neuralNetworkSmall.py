@@ -105,10 +105,10 @@ class OutConv(nn.Module):
 
 class ConditionalUNet(nn.Module):
 
-    def __init__(self, n_channels: int, n_classes: int, time_emb_dim: int = 256):
+    def __init__(self, in_channels: int, out_channels: int, time_emb_dim: int = 256):
         super().__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.time_emb_dim = time_emb_dim
 
         # Time Embedding MLP (Shared across all layers)
@@ -121,7 +121,7 @@ class ConditionalUNet(nn.Module):
         dropout_prob = 0.2
 
         # Encoder
-        self.inc = TimeAwareDoubleConv(n_channels, 64, time_emb_dim, dropout_prob=dropout_prob)
+        self.inc = TimeAwareDoubleConv(self.in_channels, 64, time_emb_dim, dropout_prob=dropout_prob)
         self.down1 = Down(64, 128, time_emb_dim)
         self.down2 = Down(128, 256, time_emb_dim)
         self.down3 = Down(256, 512, time_emb_dim)
@@ -133,7 +133,7 @@ class ConditionalUNet(nn.Module):
         self.up3 = Up(256, 128, time_emb_dim)
         self.up4 = Up(128, 64, time_emb_dim)
         
-        self.outc = OutConv(64, n_classes)
+        self.outc = OutConv(64, self.out_channels)
 
     def forward(self, x: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # 1. Generate base time embedding
