@@ -52,7 +52,7 @@ def test(dataloader, model: torch.nn.Module, loss_fn: object):
     print(f"Test Avg loss: {test_loss:>8f} \n")
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module):
+def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, save_path: str):
 
     transform = v2.Compose([
         v2.ToImage(),
@@ -123,7 +123,5 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 
-        path_to_model = f"{args.where}_{args.which}_{args.epochs}_model.pth"
-        if args.where == 'cluster':  path_to_model = f"/work/zastrau/{path_to_model}.pth"
-        torch.save(model.state_dict(), path_to_model)
+        torch.save(model.state_dict(), save_path)
     print("Done!")

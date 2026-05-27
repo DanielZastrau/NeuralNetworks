@@ -1,50 +1,37 @@
-"""Diffusion Inference using Probability Flow ODE as described in Song et al. 2021"""
-
 import argparse
+import torch
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid    # type: ignore
+
+from utils.sample_kac import TorchKacConstantSampler
 
 from scipy.integrate import solve_ivp    # type: ignore
 import numpy as np
 
-import torch
-
-from Diffusion import f, g, b
-
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid    # type: ignore
-
-from utils.sample_kac import TorchKacConstantSampler    # only imported for uniform typing
-
 @torch.inference_mode()
-def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 64) -> torch.Tensor:
+def sample(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler, batch_size: int = 64) -> torch.Tensor:
     print(f"Sampling {batch_size} images using adaptive Probability Flow ODE (RK45)...")
     device = next(model.parameters()).device
     
     # The authors recommend 1e-5 or 1e-3 for adaptive ODE sampling
-    epsilon = 1e-5
     shape = (batch_size, 3, 32, 32)
     
-    # Initialize x with random noise and flatten for SciPy
-    x = torch.randn(shape, device=device)
+    # Initialize x with random kac noise and flatten for SciPy
+    t = torch.ones(batch_size, 1, device=device) * args.T
+    x = sampler.sample(t.squeeze(1), dim=3*32*32).to(device)
     x_flat = x.cpu().numpy().flatten()
 
     def ode_func(t: float, x_flat_numpy: np.ndarray) -> np.ndarray:
         print(f"\rCurrent t: {t:.6f}", end="\r")
 
         # SciPy provides 't' as a float and 'x' as a 1D numpy array
-        x_tensor = torch.from_numpy(x_flat_numpy).float().view(shape).to(device)
+        x_tensor = torch.from_numpy(x_flat_numpy).float().view(shape).to(device)    # type: ignore
         t_tensor = torch.ones(batch_size, device=device) * t
         
-        # Get continuous coefficients
-        f_t_x = f(t_tensor, x_tensor)
-        g_t = g(t_tensor).view(-1, 1, 1, 1)
-        b_t = b(t_tensor).view(-1, 1, 1, 1)
-        
-        # Predict score
-        pred_noise = model(x_tensor, t_tensor)
-        pred_score = -pred_noise / torch.sqrt(1 - b_t**2)
-        
+        pred_velocity = model(x_tensor, t_tensor)
+
         # Calculate ODE derivative: dx/dt = f(x,t) - 0.5 * g(t)^2 * score
-        dx_dt = f_t_x - 0.5 * (g_t ** 2) * pred_score
+        dx_dt = pred_velocity
         
         # Flatten back to numpy for SciPy
         return dx_dt.cpu().numpy().flatten()
@@ -53,7 +40,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 6
     # Passing (1.0, epsilon) implicitly handles the negative dt of backward integration
     solution = solve_ivp(
         fun=ode_func,
-        t_span=(1.0, epsilon),
+        t_span=(1.0, 0),
         y0=x_flat,
         method='RK45',
         rtol=args.rel_tol,
@@ -74,7 +61,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: To
     """
 
     # generate 64 images
-    samples = sample(args=args, model=model, batch_size=64)
+    samples = sample(args=args, model=model, batch_size=64, sampler=sampler)
     print(f"Generated samples shape: {samples.shape}")
 
     samples = (samples + 1.0) / 2.0
@@ -86,7 +73,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: To
     plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
     plt.axis("off")
 
-    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_PFODE_a{args.abs_tol}_r{args.rel_tol}.png"
+    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_fODE_a{args.abs_tol}_r{args.rel_tol}.png"
     if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
     plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
     print(f"Saved generated samples to {path_to_save}")

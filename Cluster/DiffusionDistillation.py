@@ -99,13 +99,13 @@ train_dataloader = DataLoader(training_data, batch_size=128, shuffle=True)    # 
 optimizer = torch.optim.AdamW(student.parameters(), lr=2e-4, weight_decay=1e-4)
 
 # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
-N = 2
+num_substeps = 2
 
 # Number of student steps, i.e. in the end we want to sample with 4096 steps
-M = 4096
+num_steps = 4096
 eps = 1e-3
-linspace_of_endpoints = torch.linspace(1, eps, M)
-delta_t = 1 / M
+linspace_of_endpoints = torch.linspace(1, eps, num_steps)
+delta_t = 1 / num_steps
 
 iterations = 10
 
@@ -117,13 +117,17 @@ for _ in range(iterations):
     x_batch = next(iter(train_dataloader))
 
     # sample a batch of endpoint time steps
-    indices = torch.randint(0, M, (128,))
+    indices = torch.randint(0, num_steps, (128,))
     t_batch = linspace_of_endpoints[indices]
 
     # noisify x_batch according to t_batch
 
     # integrate backwards in time using the teacher method and N uniform substeps
-    x_target = teacher_integrate(model=teacher, x_batch=x_batch, t_batch=t_batch, delta_t=delta_t, N=N)
+    x_target = teacher_integrate(
+        model=teacher, x_batch=x_batch,
+        t_batch=t_batch, delta_t=delta_t,
+        N=num_substeps
+    )
 
     # integrate backwards in time using the student method and 1 substep
 

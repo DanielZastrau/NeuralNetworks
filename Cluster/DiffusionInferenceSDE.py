@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 
 from Diffusion import f, g, b
 
+from utils.sample_kac import TorchKacConstantSampler
+
 @torch.inference_mode()
 def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
     """Euler-Maruyama sampling of the reverse SDE"""
@@ -53,7 +55,10 @@ def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) 
 
     return x
 
-def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler):
+    """
+    the sampler argument only exists so that the full wrapper does not show a warning for a missing argument
+    """
 
     # generate 64 images
     samples = sample(model=model, batch_size=64, num_steps=args.num_steps)
@@ -69,7 +74,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module) -> torch.Te
     plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
     plt.axis("off")
 
-    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_SDE.png"
+    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_{args.num_steps}_samples_8x8_SDE.png"
     if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
     plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
     print(f"Saved generated samples to {path_to_save}")
