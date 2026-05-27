@@ -1,23 +1,24 @@
+"""Diffusion Inference using Probability Flow ODE as described in Song et al. 2021"""
+
+import argparse
+
 from scipy.integrate import solve_ivp
 import numpy as np
 
 import torch
 
-from DiffusionLocal.DiffusionNeuralNetworkSmall import ConditionalUNet
-from Diffusion import beta, f, g, h, b
+from Diffusion import f, g, b
 
-model = ConditionalUNet(n_channels=1, n_classes=1)
-model.load_state_dict(torch.load("model.pth"))
-
-N = 2000
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid # type=ignore
 
 @torch.inference_mode()
-def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
+def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 64) -> torch.Tensor:
     print(f"Sampling {batch_size} images using adaptive Probability Flow ODE (RK45)...")
     device = next(model.parameters()).device
     
     # The authors recommend 1e-5 or 1e-3 for adaptive ODE sampling
-    epsilon = 1e-3
+    epsilon = 1e-5
     shape = (batch_size, 1, 28, 28)
     
     # Initialize x with random noise and flatten for SciPy
@@ -25,6 +26,8 @@ def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
     x_flat = x.cpu().numpy().flatten()
 
     def ode_func(t: float, x_flat_numpy: np.ndarray) -> np.ndarray:
+        print(f"\rCurrent t: {t:.6f}", end="\r")
+
         # SciPy provides 't' as a float and 'x' as a 1D numpy array
         x_tensor = torch.from_numpy(x_flat_numpy).float().view(shape).to(device)
         t_tensor = torch.ones(batch_size, device=device) * t
@@ -51,8 +54,8 @@ def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
         t_span=(1.0, epsilon),
         y0=x_flat,
         method='RK45',
-        rtol=1e-5,
-        atol=1e-5
+        rtol=args.rel_tol,
+        atol=args.abs_tol
     )
 
     print(f"ODE Solver completed in {solution.nfev} neural network evaluations.")
@@ -63,22 +66,25 @@ def sample_ode_adaptive(batch_size: int = 64) -> torch.Tensor:
     
     return x_final
 
-import matplotlib.pyplot as plt
-from torchvision.utils import make_grid
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
+    
+    # generate 64 images
+    samples = sample(args=args, model=model, batch_size=64)
+    print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
 
-# generate 64 images
-samples = sample_ode_adaptive(batch_size=64)
-print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
+    # if your images are normalized to [-1, 1], rescale to [0, 1]
+    samples = (samples + 1.0) / 2.0
+    samples = samples.clamp(0.0, 1.0)
 
-# if your images are normalized to [-1, 1], rescale to [0, 1]
-samples = (samples + 1.0) / 2.0
-samples = samples.clamp(0.0, 1.0)
+    grid = make_grid(samples, nrow=8, padding=8, normalize=False)
 
-grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+    plt.figure(figsize=(4, 4))
+    plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+    plt.axis("off")
 
-plt.figure(figsize=(8, 8))
-plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
-plt.axis("off")
-plt.savefig("./diffusion_samples_8x8.png", dpi=200, bbox_inches="tight", pad_inches=0)
-print("Saved generated samples to ./diffusion_samples_8x8.png")
-plt.close()
+    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_PFODE_a{args.abs_tol}_r{args.rel_tol}.png"
+    if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
+    plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
+    print(f"Saved generated samples to {path_to_save}")
+
+    plt.close()

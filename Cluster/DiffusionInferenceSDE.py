@@ -1,6 +1,4 @@
-"""
-Execute from within the Diffusion directory
-"""
+import argparse
 
 import torch
 from torchvision.utils import make_grid
@@ -8,26 +6,25 @@ from torchvision.utils import make_grid
 import matplotlib.pyplot as plt
 
 from Diffusion import f, g, b
-from DiffusionUNetExplainAI import Unet
 
 @torch.inference_mode()
-def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
-    """Euler-Maruyama sampling"""
+def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
+    """Euler-Maruyama sampling of the reverse SDE"""
 
-    print(f"Sampling {batch_size} images...")
+    print(f"Sampling {batch_size} images using Euler-Maruyama SDE sampling...")
     device = next(model.parameters()).device
 
     # 1. Properly scale continuous time from T down to epsilon (e.g., 1.0 down to 1e-5 or 1e-3)
     # Match the bounds used during your training phase!
-    epsilon = 0.0001
+    epsilon = 1e-5
     time_steps = torch.linspace(1.0, epsilon, num_steps, device=device)
     dt = (1.0 - epsilon) / num_steps
 
     # Initialize x with random noise from the prior distribution
-    x = torch.randn(batch_size, 1, 28, 28, device=device)
+    x = torch.randn(batch_size, 3, 32, 32, device=device)
 
     for step_idx, t_val in enumerate(time_steps):
-        if step_idx % 100 == 0:
+        if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
             print(f"Step {step_idx}/{num_steps}")
 
         # Broadczast the continuous time value to the batch size
@@ -56,16 +53,10 @@ def sample(batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
 
     return x
 
-if __name__ == "__main__":
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    model = Unet().to(device)
-    model.load_state_dict(torch.load("/work/zastrau/diffusion/model.pth"))
-
-    N = 2000
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
 
     # generate 64 images
-    samples = sample(batch_size=64, num_steps=N)
+    samples = sample(model=model, batch_size=64, num_steps=args.num_steps)
     print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
@@ -77,5 +68,10 @@ if __name__ == "__main__":
     plt.figure(figsize=(8, 8))
     plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
     plt.axis("off")
-    plt.savefig("/homes/math/zastrau/NeuralNetworkSamples/diffusion_samples_8x8_SDE.png", dpi=200, bbox_inches="tight", pad_inches=0)
+
+    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_SDE.png"
+    if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
+    plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
+    print(f"Saved generated samples to {path_to_save}")
+    
     plt.close()
