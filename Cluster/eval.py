@@ -1,45 +1,75 @@
+import os
+import argparse
+
 import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms
-from torchvision.datasets import ImageFolder
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision import transforms    # type: ignore
+from torchvision.datasets import CIFAR10    # type: ignore
 from torchmetrics.image.fid import FrechetInceptionDistance
 
-def evaluate_fid(real_dir: str, fake_dir: str, batch_size: int = 32, feature_dim: int = 2048):
-    """
-    Computes the FID score between two directories of images.
-    
-    Args:
-        real_dir: Path to the directory containing real images.
-        fake_dir: Path to the directory containing generated (fake) images.
-        batch_size: Batch size for processing the images.
-        feature_dim: InceptionV3 feature layer dimension (64, 192, 768, or 2048).
-    """
+class FlatDirectoryDataset(Dataset):
+    """Loads images from a flat directory without requiring class subfolders."""
+    def __init__(self, directory: str, transform=None):
+        self.directory = directory
+        self.transform = transform
+        self.image_files = [
+            f for f in os.listdir(directory) 
+            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+        ]
+        if len(self.image_files) == 0:
+            raise FileNotFoundError(f"No images found in {directory}")
+
+    def __len__(self):
+        return len(self.image_files)
+
+    def __getitem__(self, idx):
+        img_path = os.path.join(self.directory, self.image_files[idx])
+        image = Image.open(img_path).convert('RGB')
+        
+        if self.transform:
+            image = self.transform(image)
+            
+        # Return a dummy label to match CIFAR10 tuple structure (image, label)
+        return image, 0 
+
+def evaluate_fid(fake_dir: str, num_samples: int, batch_size: int = 32, feature_dim: int = 2048):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # Initialize the metric. 
-    # normalize=True allows passing float tensors in the range [0, 1].
     fid = FrechetInceptionDistance(feature=feature_dim, normalize=True).to(device)
 
-    # InceptionV3 traditionally operates on 299x299 images.
+    # InceptionV3 operates optimally on 299x299 images
     transform = transforms.Compose([
         transforms.Resize((299, 299)),
         transforms.ToTensor() 
     ])
 
-    real_dataset = ImageFolder(root=real_dir, transform=transform)
-    fake_dataset = ImageFolder(root=fake_dir, transform=transform)
+    # Load Full Datasets
+    print("Loading datasets...")
+    real_dataset_full = CIFAR10(root='../data', train=False, download=True, transform=transform)
+    fake_dataset_full = FlatDirectoryDataset(directory=fake_dir, transform=transform)
 
-    real_loader = DataLoader(real_dataset, batch_size=batch_size, num_workers=4)
-    fake_loader = DataLoader(fake_dataset, batch_size=batch_size, num_workers=4)
+    # Validate requested sample size
+    if len(real_dataset_full) < num_samples:
+        raise ValueError(f"Requested {num_samples} samples, but CIFAR10 test set only has {len(real_dataset_full)}.")
+    if len(fake_dataset_full) < num_samples:
+        raise ValueError(f"Requested {num_samples} samples, but fake directory only has {len(fake_dataset_full)}.")
 
-    print("Extracting features from real images...")
-    for batch, _ in real_loader:
-        images = batch.to(device)
+    # Slice down to exactly `num_samples`
+    real_dataset = Subset(real_dataset_full, range(num_samples))    # type: ignore
+    fake_dataset = Subset(fake_dataset_full, range(num_samples))    # type: ignore
+
+    real_loader = DataLoader(real_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
+    fake_loader = DataLoader(fake_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
+
+    print(f"Extracting features from {num_samples} real CIFAR-10 images...")
+    for images, _ in real_loader:
+        images = images.to(device)
         fid.update(images, real=True)
 
-    print("Extracting features from generated images...")
-    for batch, _ in fake_loader:
-        images = batch.to(device)
+    print(f"Extracting features from {num_samples} generated images...")
+    for images, _ in fake_loader:
+        images = images.to(device)
         fid.update(images, real=False)
 
     print("Computing final FID score...")
@@ -47,15 +77,10 @@ def evaluate_fid(real_dir: str, fake_dir: str, batch_size: int = 32, feature_dim
     
     return fid_score.item()
 
-if __name__ == "__main__":
-    # Example usage:
-    # Set paths to your dataset directories. 
-    # ImageFolder expects subdirectories (e.g., path/to/real/class_name/image.png)
-    REAL_IMG_PATH = "./data/real_images" 
-    FAKE_IMG_PATH = "./data/generated_images"
+def eval_wrapper(args: argparse.Namespace, img_path: str):
     
     try:
-        score = evaluate_fid(REAL_IMG_PATH, FAKE_IMG_PATH, batch_size=32)
-        print(f"FID Score: {score:.4f}")
-    except FileNotFoundError as e:
-        print(f"Error loading directories: {e}. Ensure paths contain valid image subfolders.")
+        score = evaluate_fid(fake_dir=img_path, num_samples=args.num_samples, batch_size=32)
+        print(f"FID Score ({args.num_samples} samples): {score:.4f}")
+    except Exception as e:
+        print(f"Evaluation failed: {e}")

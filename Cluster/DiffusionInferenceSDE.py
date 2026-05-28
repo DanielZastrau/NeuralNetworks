@@ -1,7 +1,8 @@
 import argparse
+import os
 
 import torch
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image    # type: ignore
 
 import matplotlib.pyplot as plt
 
@@ -10,10 +11,10 @@ from Diffusion import f, g, b
 from utils.sample_kac import TorchKacConstantSampler
 
 @torch.inference_mode()
-def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) -> torch.Tensor:
+def sample(model: torch.nn.Module, num_samples: int = 64, num_steps: int = 1000) -> torch.Tensor:
     """Euler-Maruyama sampling of the reverse SDE"""
 
-    print(f"Sampling {batch_size} images using Euler-Maruyama SDE sampling...")
+    print(f"Sampling {num_samples} images using Euler-Maruyama SDE sampling...")
     device = next(model.parameters()).device
 
     # 1. Properly scale continuous time from T down to epsilon (e.g., 1.0 down to 1e-5 or 1e-3)
@@ -23,14 +24,14 @@ def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) 
     dt = (1.0 - epsilon) / num_steps
 
     # Initialize x with random noise from the prior distribution
-    x = torch.randn(batch_size, 3, 32, 32, device=device)
+    x = torch.randn(num_samples, 3, 32, 32, device=device)
 
     for step_idx, t_val in enumerate(time_steps):
         if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
             print(f"Step {step_idx}/{num_steps}")
 
         # Broadczast the continuous time value to the batch size
-        t = torch.ones(batch_size, device=device) * t_val
+        t = torch.ones(num_samples, device=device) * t_val
 
         # Get continuous coefficients
         f_t_x = f(t, x)
@@ -55,28 +56,36 @@ def sample(model: torch.nn.Module, batch_size: int = 64, num_steps: int = 1000) 
 
     return x
 
-def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler):
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler | None, save_path: str):
     """
     the sampler argument only exists so that the full wrapper does not show a warning for a missing argument
     """
 
     # generate 64 images
-    samples = sample(model=model, batch_size=64, num_steps=args.num_steps)
+    samples = sample(model=model, num_samples=args.num_samples, num_steps=args.num_steps)
     print(f"Generated samples shape: {samples.shape}")  # Should be (64, 1, 28, 28)
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
     samples = (samples + 1.0) / 2.0
     samples = samples.clamp(0.0, 1.0)
 
-    grid = make_grid(samples, nrow=8, padding=2, normalize=False)
+    if args.sampler_mode == '8x8':
+        grid = make_grid(samples, nrow=8, padding=2, normalize=False)
 
-    plt.figure(figsize=(8, 8))
-    plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
-    plt.axis("off")
+        plt.figure(figsize=(8, 8))
+        plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+        plt.axis("off")
 
-    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_{args.num_steps}_samples_8x8_SDE.png"
-    if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
-    plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
-    print(f"Saved generated samples to {path_to_save}")
-    
-    plt.close()
+        plt.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0)
+        print(f"Saved generated samples to {save_path}")
+        
+        plt.close()
+    else:    # args.sampler_diff_mode == 'set'
+        os.makedirs(save_path, exist_ok=True)
+        
+        # save_image automatically handles the C, H, W shape and normalizes to 0-255 internally
+        for i, img in enumerate(samples):
+            img_path = os.path.join(save_path, f"sample_{i:05d}.png")
+            save_image(img, img_path)
+            
+        print(f"Saved {len(samples)} individual images to {save_path}/")
