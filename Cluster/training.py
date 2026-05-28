@@ -75,8 +75,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     )
 
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True)    # type: ignore
-    test_dataloader = DataLoader(test_data, batch_size=args.batch_size)    # type: ignore
+    train_dataloader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True, num_workers=4)    # type: ignore
+    test_dataloader = DataLoader(test_data, batch_size=args.batch_size, num_workers=4)    # type: ignore
 
     # Define step counts
     epochs = args.epochs
