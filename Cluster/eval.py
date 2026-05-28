@@ -47,7 +47,7 @@ def evaluate_fid(args: argparse.Namespace, fake_dir: str, batch_size: int = 128,
     # Load Full Datasets
     print("Loading datasets...")
     real_dataset_full = CIFAR10(
-        root='/fast/zastrau/data' if args.where == 'cluster' else '../data',
+        root=args.data_dir if args.where == 'cluster' else '../data',
         train=False,
         download=True,
         transform=transform
