@@ -9,22 +9,21 @@ from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
 
 def train(dataloader, model: torch.nn.Module, loss_fn: object,
-          optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+          optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
+          scaler: torch.amp.GradScaler):
+    
+    device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device_type)
 
     model.train()
     train_loss = 0
 
-    # Initialize the Gradient Scaler for AMP
-    scaler = torch.amp.GradScaler(device=device)
-    print('\nInitialized the amp grad scaler')
-
-    for batch, (X, _) in enumerate(dataloader):
+    for X, _ in dataloader:
         X = X.to(device)
         optimizer.zero_grad()
 
         # Runs the forward pass in mixed precision
-        with torch.amp.autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu'):
+        with torch.amp.autocast(device_type=device_type):
             loss = loss_fn.loss(model=model, mini_batch=X)
 
         # Scales the loss and completes the backward pass
@@ -39,13 +38,11 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
         scaler.update()
         scheduler.step()
 
-        train_loss += loss.item()
+        # Detach removes the tensor from the computation graph to save memory, 
+        # but keeps the value on the GPU, avoiding CPU synchronization.
+        train_loss += loss.detach()
 
-        if batch % 10 == 0:
-            current_lr = scheduler.get_last_lr()[0]
-            print(f"Step {batch}/{len(dataloader)}, LR: {current_lr:.6f}, Loss: {loss.item():.6f}")
-
-    print(f"\n Train Avg loss: {train_loss / len(dataloader):>8f} \n")
+    print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
 def test(dataloader, model: torch.nn.Module, loss_fn: object):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,9 +55,8 @@ def test(dataloader, model: torch.nn.Module, loss_fn: object):
         for X, _ in dataloader:
             X = X.to(device)
 
-            test_loss += loss_fn.loss(model=model, mini_batch=X).item()
-    test_loss /= num_batches
-    print(f"Test Avg loss: {test_loss:>8f} \n")
+            test_loss += loss_fn.loss(model=model, mini_batch=X).detach()
+    print(f"Test Avg loss: {test_loss.item() / num_batches:>8f} \n")
 
 
 def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, save_path: str):
@@ -137,11 +133,15 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
         milestones=[warmup_steps]
     )
     
+    # Initialize the Gradient Scaler for AMP
+    print('\nInitialize the amp grad scaler')
+    scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
+
     # train the model
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}\n-------------------------------")
 
-        train(train_dataloader, model, loss_fn, optimizer, scheduler)
+        train(train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
         test(test_dataloader, model, loss_fn)
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
