@@ -43,7 +43,9 @@ if __name__ == "__main__":
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
     parser.add_argument('--abs_tol', type=float, default=1e-3,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
-    
+    parser.add_argument('--data-dir', type=str,
+                        help='the local directory of the node the job runs on in the cluster')
+
     args = parser.parse_args()
 
     # Determine device and set up model and loss function accordingly

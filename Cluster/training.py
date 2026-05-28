@@ -61,14 +61,14 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     ])
 
     training_data = datasets.CIFAR10(
-        root="/fast/zastrau/data" if args.where == 'cluster' else "../data",
+        root=args.data_dir if args.where == 'cluster' else "../data",
         train=True,
         download=True,
         transform=transform
     )
 
     test_data = datasets.CIFAR10(
-        root="/fast/zastrau/data" if args.where == 'cluster' else "../data",
+        root=args.data_dir if args.where == 'cluster' else "../data",
         train=False,
         download=True,
         transform=transform
