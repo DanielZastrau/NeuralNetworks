@@ -97,7 +97,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     test_dataloader = DataLoader(    # type: ignore
         test_data,
         batch_size=args.batch_size,
-        num_workers=4
+        num_workers=4,
         pin_memory=True if args.where == 'cluster' else False
     )
 
