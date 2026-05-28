@@ -1,27 +1,28 @@
 """Diffusion Inference using Probability Flow ODE as described in Song et al. 2021"""
 
 import argparse
+import os
 
 from scipy.integrate import solve_ivp    # type: ignore
 import numpy as np
 
 import torch
+from torchvision.utils import make_grid, save_image    # type: ignore
 
 from Diffusion import f, g, b
 
 import matplotlib.pyplot as plt
-from torchvision.utils import make_grid    # type: ignore
 
 from utils.sample_kac import TorchKacConstantSampler    # only imported for uniform typing
 
 @torch.inference_mode()
-def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 64) -> torch.Tensor:
-    print(f"Sampling {batch_size} images using adaptive Probability Flow ODE (RK45)...")
+def sample(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
+    print(f"Sampling {args.num_samples} images using adaptive Probability Flow ODE (RK45)...")
     device = next(model.parameters()).device
     
     # The authors recommend 1e-5 or 1e-3 for adaptive ODE sampling
     epsilon = 1e-5
-    shape = (batch_size, 3, 32, 32)
+    shape = (args.num_samples, 3, 32, 32)
     
     # Initialize x with random noise and flatten for SciPy
     x = torch.randn(shape, device=device)
@@ -32,7 +33,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 6
 
         # SciPy provides 't' as a float and 'x' as a 1D numpy array
         x_tensor = torch.from_numpy(x_flat_numpy).float().view(shape).to(device)
-        t_tensor = torch.ones(batch_size, device=device) * t
+        t_tensor = torch.ones(args.num_samples, device=device) * t
         
         # Get continuous coefficients
         f_t_x = f(t_tensor, x_tensor)
@@ -68,27 +69,36 @@ def sample(args: argparse.Namespace, model: torch.nn.Module, batch_size: int = 6
     
     return x_final
 
-def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler):
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler | None, save_path: str):
     """
     The sampler argument only exists so that the full wrapper does not show a warning
     """
 
     # generate 64 images
-    samples = sample(args=args, model=model, batch_size=64)
+    samples = sample(args=args, model=model)
     print(f"Generated samples shape: {samples.shape}")
 
     samples = (samples + 1.0) / 2.0
     samples = samples.clamp(0.0, 1.0)
 
-    grid = make_grid(samples, nrow=8, padding=8, normalize=False)
 
-    plt.figure(figsize=(4, 4))
-    plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
-    plt.axis("off")
+    if args.sampler_mode == '8x8':
+        grid = make_grid(samples, nrow=8, padding=2, normalize=False)
 
-    path_to_save = f"./{args.where}_{args.which}_{args.epochs}_samples_8x8_PFODE_a{args.abs_tol}_r{args.rel_tol}.png"
-    if args.where == 'cluster': path_to_save = f"/homes/math/zastrau/NeuralNetworkSamples/{path_to_save}"
-    plt.savefig(path_to_save, dpi=200, bbox_inches="tight", pad_inches=0)
-    print(f"Saved generated samples to {path_to_save}")
+        plt.figure(figsize=(8, 8))
+        plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+        plt.axis("off")
 
-    plt.close()
+        plt.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0)
+        print(f"Saved generated samples to {save_path}")
+        
+        plt.close()
+    else:    # args.sampler_diff_mode == 'set'
+        os.makedirs(save_path, exist_ok=True)
+        
+        # save_image automatically handles the C, H, W shape and normalizes to 0-255 internally
+        for i, img in enumerate(samples):
+            img_path = os.path.join(save_path, f"sample_{i:05d}.png")
+            save_image(img, img_path)
+            
+        print(f"Saved {len(samples)} individual images to {save_path}/")

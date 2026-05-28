@@ -6,7 +6,7 @@ from utils.sample_kac import TorchKacConstantSampler
 
 class LossFns():
 
-    def __init__(self, args: argparse.Namespace, sampler: TorchKacConstantSampler):
+    def __init__(self, args: argparse.Namespace, sampler: TorchKacConstantSampler | None):
         self.args = args
         self.sampler = sampler
 
