@@ -96,9 +96,10 @@ if __name__ == "__main__":
         from neuralNetworkOpenAI import UNetModel
         model = UNetModel(
             image_size=32, in_channels=3,
-            out_channels=3, model_channels=64,
-            num_res_blocks=5, attention_resolutions=[16, 32],
-            num_heads=4
+            out_channels=3, model_channels=128,
+            num_res_blocks=2, attention_resolutions=[16],
+            num_heads=4, num_head_channels=64,
+            channel_mult=(1, 2, 2, 2)
         ).to(device)
     else:    # args.where == 'local'
         from neuralNetworkSmall import ConditionalUNet
@@ -107,6 +108,11 @@ if __name__ == "__main__":
     if args.what in ['eval', 'sample']:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
     print('\nInstantiated the model\n')
+
+
+    # compile the model to fuse and optimize the UNet graph for the GPU
+    if args.where == 'cluster':
+        model = torch.compile(model)
 
 
     # Set up sampler if needed
