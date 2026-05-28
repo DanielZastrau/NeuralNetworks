@@ -32,7 +32,7 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
 
         if batch % 10 == 0:
             current_lr = scheduler.get_last_lr()[0]
-            print(f"Step {batch}/{len(dataloader)}, LR: {current_lr:.6f}, Loss: {loss.item():.6f}", end="\r")
+            print(f"Step {batch}/{len(dataloader)}, LR: {current_lr:.6f}, Loss: {loss.item():.6f}")
 
     print(f"\n Train Avg loss: {train_loss / len(dataloader):>8f} \n")
 
