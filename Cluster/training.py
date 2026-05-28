@@ -24,7 +24,7 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
         optimizer.zero_grad()
 
         # Runs the forward pass in mixed precision
-        with torch.amp.autocast(device_type=device):
+        with torch.amp.autocast(device_type='cuda' if torch.cuda.is_available() else 'cpu'):
             loss = loss_fn.loss(model=model, mini_batch=X)
 
         # Scales the loss and completes the backward pass
