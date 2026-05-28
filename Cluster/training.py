@@ -15,18 +15,28 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
     model.train()
     train_loss = 0
 
+    # Initialize the Gradient Scaler for AMP
+    scaler = torch.cuda.amp.GradScaler()
+
     for batch, (X, _) in enumerate(dataloader):
         X = X.to(device)
+        optimizer.zero_grad()
 
-        loss = loss_fn.loss(model=model, mini_batch=X)
+        # Runs the forward pass in mixed precision
+        with torch.cuda.amp.autocast():
+            loss = loss_fn.loss(model=model, mini_batch=X)
 
-        # Backpropagation
-        loss.backward()
+        # Scales the loss and completes the backward pass
+        scaler.scale(loss).backward()
+
+        # Unscale gradients before clipping
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-        optimizer.step()
+        # Step optimizer and scaler
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
-        optimizer.zero_grad()
 
         train_loss += loss.item()
 
@@ -66,7 +76,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
         root=args.data_dir if args.where == 'cluster' else "../data",
         train=True,
         download=True,
-        transform=transform
+        transform=transform,
     )
 
     test_data = datasets.CIFAR10(
@@ -77,8 +87,19 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     )
 
     # Create data loaders.
-    train_dataloader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True, num_workers=4)    # type: ignore
-    test_dataloader = DataLoader(test_data, batch_size=args.batch_size, num_workers=4)    # type: ignore
+    train_dataloader = DataLoader(    # type: ignore
+        training_data,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True if args.where == 'cluster' else False
+    )
+    test_dataloader = DataLoader(    # type: ignore
+        test_data,
+        batch_size=args.batch_size,
+        num_workers=4
+        pin_memory=True if args.where == 'cluster' else False
+    )
 
     print('\nSetting optimizer and learning rates')
     # Define step counts
