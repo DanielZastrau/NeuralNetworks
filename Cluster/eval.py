@@ -33,7 +33,7 @@ class FlatDirectoryDataset(Dataset):
         # Return a dummy label to match CIFAR10 tuple structure (image, label)
         return image, 0 
 
-def evaluate_fid(fake_dir: str, num_samples: int, batch_size: int = 32, feature_dim: int = 2048):
+def evaluate_fid(args: argparse.Namespace, fake_dir: str, batch_size: int = 128, feature_dim: int = 2048):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     fid = FrechetInceptionDistance(feature=feature_dim, normalize=True).to(device)
@@ -46,28 +46,33 @@ def evaluate_fid(fake_dir: str, num_samples: int, batch_size: int = 32, feature_
 
     # Load Full Datasets
     print("Loading datasets...")
-    real_dataset_full = CIFAR10(root='../data', train=False, download=True, transform=transform)
+    real_dataset_full = CIFAR10(
+        root='/fast/zastrau/data' if args.where == 'cluster' else '../data',
+        train=False,
+        download=True,
+        transform=transform
+    )
     fake_dataset_full = FlatDirectoryDataset(directory=fake_dir, transform=transform)
 
     # Validate requested sample size
-    if len(real_dataset_full) < num_samples:
-        raise ValueError(f"Requested {num_samples} samples, but CIFAR10 test set only has {len(real_dataset_full)}.")
-    if len(fake_dataset_full) < num_samples:
-        raise ValueError(f"Requested {num_samples} samples, but fake directory only has {len(fake_dataset_full)}.")
+    if len(real_dataset_full) < args.num_samples:
+        raise ValueError(f"Requested {args.num_samples} samples, but CIFAR10 test set only has {len(real_dataset_full)}.")
+    if len(fake_dataset_full) < args.num_samples:
+        raise ValueError(f"Requested {args.num_samples} samples, but fake directory only has {len(fake_dataset_full)}.")
 
     # Slice down to exactly `num_samples`
-    real_dataset = Subset(real_dataset_full, range(num_samples))    # type: ignore
-    fake_dataset = Subset(fake_dataset_full, range(num_samples))    # type: ignore
+    real_dataset = Subset(real_dataset_full, range(args.num_samples))    # type: ignore
+    fake_dataset = Subset(fake_dataset_full, range(args.num_samples))    # type: ignore
 
     real_loader = DataLoader(real_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
     fake_loader = DataLoader(fake_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
 
-    print(f"Extracting features from {num_samples} real CIFAR-10 images...")
+    print(f"Extracting features from {args.num_samples} real CIFAR-10 images...")
     for images, _ in real_loader:
         images = images.to(device)
         fid.update(images, real=True)
 
-    print(f"Extracting features from {num_samples} generated images...")
+    print(f"Extracting features from {args.num_samples} generated images...")
     for images, _ in fake_loader:
         images = images.to(device)
         fid.update(images, real=False)
@@ -80,7 +85,7 @@ def evaluate_fid(fake_dir: str, num_samples: int, batch_size: int = 32, feature_
 def eval_wrapper(args: argparse.Namespace, img_path: str):
     
     try:
-        score = evaluate_fid(fake_dir=img_path, num_samples=args.num_samples, batch_size=32)
+        score = evaluate_fid(args=args, fake_dir=img_path, batch_size=128)
         print(f"FID Score ({args.num_samples} samples): {score:.4f}")
     except Exception as e:
         print(f"Evaluation failed: {e}")
