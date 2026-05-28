@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from torchvision.utils import make_grid, save_image    # type: ignore
 
-from Diffusion import f, g, b
+from utils.diffusion import f, g, b
 
 import matplotlib.pyplot as plt
 

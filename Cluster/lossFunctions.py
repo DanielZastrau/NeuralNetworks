@@ -17,7 +17,7 @@ class LossFns():
             self.loss = self.kac
 
     def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
-        from Diffusion import b
+        from utils.diffusion import b
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -53,9 +53,11 @@ class LossFns():
     
     def kac(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
         from utils.velo_utils import compute_velocity
-        from Kac import f, df, g, dg
+        from utils.kac import f, df, g, dg
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        assert isinstance(self.sampler, TorchKacConstantSampler)
 
         B = mini_batch.size(0)
         x_0 = mini_batch.view(B, -1).to(device)

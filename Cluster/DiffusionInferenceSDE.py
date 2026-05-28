@@ -6,7 +6,7 @@ from torchvision.utils import make_grid, save_image    # type: ignore
 
 import matplotlib.pyplot as plt
 
-from Diffusion import f, g, b
+from utils.diffusion import f, g, b
 
 from utils.sample_kac import TorchKacConstantSampler
 
@@ -17,9 +17,8 @@ def sample(model: torch.nn.Module, num_samples: int = 64, num_steps: int = 1000)
     print(f"Sampling {num_samples} images using Euler-Maruyama SDE sampling...")
     device = next(model.parameters()).device
 
-    # 1. Properly scale continuous time from T down to epsilon (e.g., 1.0 down to 1e-5 or 1e-3)
-    # Match the bounds used during your training phase!
-    epsilon = 1e-5
+    # 1. Properly scale continuous time from T down to epsilon
+    epsilon = 1e-5    # 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
     time_steps = torch.linspace(1.0, epsilon, num_steps, device=device)
     dt = (1.0 - epsilon) / num_steps
 

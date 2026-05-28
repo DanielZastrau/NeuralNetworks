@@ -35,3 +35,9 @@ def h(t: torch.Tensor) -> torch.Tensor:
 
 def b(t: torch.Tensor) -> torch.Tensor:
     return torch.exp(-h(t) / 2)
+
+def noisify(x_0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+    """closed form solution to the reverse time SDE formulation of the diffusion process, see e.g. "Song et al 2021 - Score based generative modeling through SDEs"""
+
+    b_t = b(t).view(-1, 1, 1, 1)
+    return torch.sqrt(1 - b_t**2) * torch.randn_like(x_0) + b_t * x_0
