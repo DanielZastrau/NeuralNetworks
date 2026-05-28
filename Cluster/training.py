@@ -54,12 +54,14 @@ def test(dataloader, model: torch.nn.Module, loss_fn: object):
 
 def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, save_path: str):
 
+    print('\nSetting the transform')
     transform = v2.Compose([
         v2.ToImage(),
         v2.ToDtype(torch.float32, scale=True),  # Scales to [0, 1]
         v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Shifts to [-1, 1]
     ])
 
+    print('\nLoading train and test data')
     training_data = datasets.CIFAR10(
         root=args.data_dir if args.where == 'cluster' else "../data",
         train=True,
@@ -78,6 +80,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     train_dataloader = DataLoader(training_data, batch_size=args.batch_size, shuffle=True, num_workers=4)    # type: ignore
     test_dataloader = DataLoader(test_data, batch_size=args.batch_size, num_workers=4)    # type: ignore
 
+    print('\nSetting optimizer and learning rates')
     # Define step counts
     epochs = args.epochs
     batches_per_epoch = len(train_dataloader)    # type: ignore
@@ -113,8 +116,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     )
     
     # train the model
-    torch.autograd.set_detect_anomaly(True)
-
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}\n-------------------------------")
 

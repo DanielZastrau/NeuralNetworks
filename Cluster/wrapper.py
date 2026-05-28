@@ -1,6 +1,5 @@
 import argparse
 # This print exists because the cluster behaved weirdly
-print('wrapper is started', flush=True)
 
 import torch
 
