@@ -1,13 +1,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_multiple_poisson_paths(num_paths=200, rate=2.0, duration=10.0):
+def plot_multiple_poisson_paths(num_paths: int = 200, rate: float = 2.0, duration: float = 10.0):
     plt.figure(figsize=(10, 6))
     
+    rate = 1 / rate
+
     # Generate inter-arrival times: average count is rate * duration
     # We generate a large enough buffer of inter-arrival times
     max_events = int(rate * duration * 5)
-    inter_arrivals = np.random.exponential(1/rate, [num_paths, max_events])
+    inter_arrivals = np.random.exponential(rate, [num_paths, max_events])
     arrival_times = np.cumsum(inter_arrivals, axis=1)
 
 
@@ -31,7 +33,7 @@ def plot_multiple_poisson_paths(num_paths=200, rate=2.0, duration=10.0):
     plt.xlabel("Time ($t$)")
     plt.ylabel("Number of events ($N_t$)")
     plt.grid(True, linestyle='--', alpha=0.6)
-    plt.show()
+    plt.savefig(f'./{rate}_homogenousPoissonPoint.png', dpi=300)
 
 # Execution
 plot_multiple_poisson_paths()

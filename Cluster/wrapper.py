@@ -1,11 +1,7 @@
-import argparse
-# This print exists because the cluster behaved weirdly
-
-import torch
+"""Wraps around all other functionalities to provide a unified entrypoint to the training, evaluating and sampling for the 4 generative models."""
 
 if __name__ == "__main__":
-    # This print exists because the cluster behaved weirdly
-    print('entered the main block', flush=True)
+    import argparse
 
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
@@ -24,7 +20,7 @@ if __name__ == "__main__":
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     parser.add_argument('--epochs', type=int, default=200,
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
-    parser.add_argument('--batch_size', type=int, default=512,
+    parser.add_argument('--batch_size', type=int, default=128,
                         help='only needed for training')
     parser.add_argument('--num_steps', type=int, default=8192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
@@ -47,10 +43,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-
     print(f'\nData directory:  {args.data_dir}\n')
 
+
     # Determine device and set up model and loss function accordingly
+    import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'\nDetermined device:  {device}\n')
 
