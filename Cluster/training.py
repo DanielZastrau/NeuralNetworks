@@ -16,14 +16,15 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
     train_loss = 0
 
     # Initialize the Gradient Scaler for AMP
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler(device=device)
+    print('\nInitialized the amp grad scaler')
 
     for batch, (X, _) in enumerate(dataloader):
         X = X.to(device)
         optimizer.zero_grad()
 
         # Runs the forward pass in mixed precision
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast(device_type=device):
             loss = loss_fn.loss(model=model, mini_batch=X)
 
         # Scales the loss and completes the backward pass
