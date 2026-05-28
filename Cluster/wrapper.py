@@ -1,11 +1,12 @@
 import argparse
+# This print exists because the cluster behaved weirdly
+print('wrapper is started', flush=True)
 
 import torch
 
-from lossFunctions import LossFns
-from training import training_wrapper
-
 if __name__ == "__main__":
+    # This print exists because the cluster behaved weirdly
+    print('entered the main block', flush=True)
 
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
@@ -115,6 +116,8 @@ if __name__ == "__main__":
 
     # Train the model
     if args.what in ['full', 'train']:
+        from training import training_wrapper
+        from lossFunctions import LossFns
 
         print(f'\nInstantiating the loss function\n')
         loss_fn: object = LossFns(args=args, sampler=sampler)
