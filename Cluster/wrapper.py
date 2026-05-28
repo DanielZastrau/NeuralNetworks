@@ -10,12 +10,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
-    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], required=True, default='diffusion',
+    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], default='diffusion',
                         help='which model do you want to run')
-    parser.add_argument('--where', type=str, choices=['local', 'cluster'], required=True, default='local',
+    parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'full', 'sampleeval'], required=True, default='full',
+    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'full', 'sampleeval'], default='full',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
     parser.add_argument('--sampler_diff', type=str, choices=['sde', 'pfode'], default='sde',
                         help='only required if the "which" flag is set to "diffusion" defaults to euler-maruyama scheme of the reverse time SDE')
@@ -23,7 +23,7 @@ if __name__ == "__main__":
                         help='only required if the "which" flag is set to "kac" defaults to flowODE with rk45')    # TODO: might delete this since I only want to be using RK45
     parser.add_argument('--sampler_mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
-    parser.add_argument('--epochs', type=int, required=True, default=200,
+    parser.add_argument('--epochs', type=int, default=200,
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
     parser.add_argument('--batch_size', type=int, default=512,
                         help='only needed for training')
