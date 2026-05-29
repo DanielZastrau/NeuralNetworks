@@ -177,18 +177,21 @@ if __name__ == "__main__":
 
     # Train the model
     if args.what in ['full', 'train']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nStarting the training\n')
+
         from Cluster.training import training_wrapper
         from Cluster.utils.lossFunctions import LossFns
 
         print(f'\nInstantiating the loss function\n')
         loss_fn: object = LossFns(args=args, sampler=sampler)
-
-        print(f'\nStarting the training\n')
         training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, save_path=path_to_model)
 
 
     # Sample from the model
     if args.what in ['full', 'sample', 'sampleeval']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
 
         if args.which == 'diffusion':
             if args.sampler_diff == 'sde':
@@ -198,21 +201,22 @@ if __name__ == "__main__":
         else:    # args.which == 'kac'
             from Cluster.kacInferenceODE_Jannis import sample_wrapper
 
-        print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, save_path=save_path)
 
 
     # Evaluate the model using FID
     if args.what in ['full', 'eval', 'sampleeval']:
-        from Cluster.eval import eval_wrapper
-
+        print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_model}\n')
+
+        from Cluster.eval import eval_wrapper
         eval_wrapper(args=args, data=data, img_path=save_path)
 
 
     if args.what in ['full', 'distill']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nDistilling the {args.num_teacher_steps}step teacher model {path_to_model} into a {args.num_student_steps}step student')
+
         # TODO Need to also implement distillation for all other processes, MMD and Schrödinger and Kac
         from Cluster.distillation import distillation_wrapper
-
-        print(f'\nDistilling the {args.num_teacher_steps}step teacher model {path_to_model} into a {args.num_student_steps}step student')
         distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model)
