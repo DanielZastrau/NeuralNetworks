@@ -9,8 +9,8 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from utils.fp16_util import convert_module_to_f16, convert_module_to_f32
-from utils.nn_utils import (
+from Cluster.utils.fp16_util import convert_module_to_f16, convert_module_to_f32
+from Cluster.utils.nn_utils import (
     checkpoint,
     conv_nd,
     linear,

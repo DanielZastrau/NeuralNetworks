@@ -56,7 +56,7 @@ def student_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Te
     return x_batch - model(x_batch, t_batch) * delta_t
 
 
-def distillation_wrapper(args: argparse.Namespace, save_path: str):
+def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: str = ''):
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
@@ -67,14 +67,20 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
     train_dataloader, _ = data.get_datasets_for_training()
 
 
+    if args.what == 'full':
+        path = model_path
+    else:
+        path = args.model
+
+
     print('\nInitialize the teacher.')
     teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
-    teacher.load_state_dict(torch.load(args.model, map_location=device))
+    teacher.load_state_dict(torch.load(path, map_location=device))
 
 
     print('\nInitialize the student.')
     student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
-    student.load_state_dict(torch.load(args.model, map_location=device))
+    student.load_state_dict(torch.load(path, map_location=device))
 
 
     print('\nGot the noise')
@@ -87,11 +93,9 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
 
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
-    # TODO This should just be the fraction of teacher_steps / student_steps
-    num_substeps = args.num
-
-    # Number of student steps, i.e. in the end we want to sample with 4096 steps which is half of what I use for the diffusion teacher sde
-    # TODO
+    num_substeps = args.num_teacher_substeps
+    
+    # Number of student steps, i.e. in the end we want to sample with M steps
     num_steps = args.num_student_steps
 
     # !This needs to match the training setup
@@ -111,7 +115,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
         x_batch, _ = next(iter(train_dataloader))
 
         # sample a batch of endpoint time steps
-        indices = torch.randint(0, num_steps, (128,))
+        indices = torch.randint(0, num_steps, (args.batch_size,))
         t_batch = linspace_of_endpoints[indices]
 
         # noisify x_batch according to t_batch

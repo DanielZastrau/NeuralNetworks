@@ -6,10 +6,10 @@ from torchvision.utils import make_grid, save_image    # type: ignore
 
 import matplotlib.pyplot as plt
 
-from utils.diffusion import f, g, b
+from Cluster.utils.diffusion import f, g, b
 
-from utils.sample_kac import TorchKacConstantSampler
-from utils.dataHandling import DataProvider
+from Cluster.utils.sample_kac import TorchKacConstantSampler
+from Cluster.utils.dataHandling import DataProvider
 
 @torch.inference_mode()
 def sample(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider) -> torch.Tensor:
@@ -22,15 +22,15 @@ def sample(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider)
     # ! This needs to match the training setup, i.e. if training was on (1e-3, 1) then sampling also needs to be on (1e-3, 1)
     # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
     epsilon = 1e-5
-    time_steps = torch.linspace(1.0, epsilon, args.num_steps, device=device)
-    dt = (1.0 - epsilon) / args.num_steps
+    time_steps = torch.linspace(1.0, epsilon, args.num_teacher_steps, device=device)
+    dt = (1.0 - epsilon) / args.num_teacher_steps
 
     # Initialize x with random noise from the prior distribution
     x = torch.randn(args.num_samples, data.data_dims.channels, data.data_dims.width, data.data_dims.height, device=device)
 
     for step_idx, t_val in enumerate(time_steps):
         if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-            print(f"Step {step_idx}/{args.num_steps}")
+            print(f"Step {step_idx}/{args.num_teacher_steps}")
 
         # Broadczast the continuous time value to the batch size
         t = torch.ones(args.num_samples, device=device) * t_val
@@ -50,7 +50,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider)
         noise_injection = g_t * torch.sqrt(torch.tensor(dt, device=device)) * torch.randn_like(x)
 
         # Don't add random noise at the very last step
-        if step_idx == args.num_steps - 1:
+        if step_idx == args.num_teacher_steps - 1:
             noise_injection = 0.0
 
         # Continuous SDE reverse step formula

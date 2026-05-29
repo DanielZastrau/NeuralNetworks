@@ -3,7 +3,7 @@ import argparse
 import torch
 from torchmetrics.image.fid import FrechetInceptionDistance
 
-from utils.dataHandling import DataProvider
+from Cluster.utils.dataHandling import DataProvider
 
 
 def evaluate_fid(args: argparse.Namespace, data: DataProvider, path_to_generated_samples: str, feature_dim: int = 2048):

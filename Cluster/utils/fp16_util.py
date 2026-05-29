@@ -6,7 +6,6 @@ import numpy as np
 import torch as th
 import torch.nn as nn
 from torch._utils import _flatten_dense_tensors, _unflatten_dense_tensors
-import utils.logger
 
 INITIAL_LOG_LOSS_SCALE = 20.0
 
