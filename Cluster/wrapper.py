@@ -40,10 +40,16 @@ if __name__ == "__main__":
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
     parser.add_argument('--data-dir', type=str,
                         help='the local directory of the node the job runs on in the cluster')
+    parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
+                        help='which dataset you want to train on options include [cifar10]')
 
     args = parser.parse_args()
 
     print(f'\nData directory:  {args.data_dir}\n')
+
+
+    from utils.dataHandling import DataProvider
+    data = DataProvider(args=args)
 
 
     # Determine device and set up model and loss function accordingly
@@ -99,15 +105,15 @@ if __name__ == "__main__":
     if args.where == 'cluster':
         from neuralNetworkOpenAI import UNetModel
         model = UNetModel(
-            image_size=32, in_channels=3,
-            out_channels=3, model_channels=128,
-            num_res_blocks=2, attention_resolutions=[16],
-            num_heads=4, num_head_channels=64,
-            channel_mult=(1, 2, 2, 2)
+            image_size=data.data_dims.size, in_channels=data.data_dims.channels,
+            out_channels=data.data_dims.channels,
+            model_channels=128, num_res_blocks=2,
+            attention_resolutions=[16], num_heads=4,
+            num_head_channels=64, channel_mult=(1, 2, 2, 2)
         ).to(device)
     else:    # args.where == 'local'
         from neuralNetworkSmall import ConditionalUNet
-        model = ConditionalUNet(in_channels=3, out_channels=3).to(device)
+        model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
     if args.what in ['eval', 'sample']:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
@@ -137,7 +143,7 @@ if __name__ == "__main__":
         loss_fn: object = LossFns(args=args, sampler=sampler)
 
         print(f'\nStarting the training\n')
-        training_wrapper(args=args, loss_fn=loss_fn, model=model, save_path=path_to_model)
+        training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, save_path=path_to_model)
 
 
     # Sample from the model
@@ -152,14 +158,14 @@ if __name__ == "__main__":
             from kacInferenceODE_Jannis import sample_wrapper
 
         print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
-        sample_wrapper(args=args, model=model, sampler=sampler, save_path=save_path)
+        sample_wrapper(args=args, model=model, data=data, sampler=sampler, save_path=save_path)
 
 
     # Evaluate the model using FID
     if args.what in ['full', 'eval', 'sampleeval']:
         from eval import eval_wrapper
 
-        eval_wrapper(args=args, img_path=save_path)
+        eval_wrapper(args=args, data=data, img_path=save_path)
 
 
     if args.what in ['full', 'distill']:

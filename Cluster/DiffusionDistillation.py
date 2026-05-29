@@ -2,14 +2,11 @@ import argparse
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from torchvision import datasets    # type: ignore
-from torchvision.transforms import v2    # type: ignore
-from torch.utils.data import DataLoader
 
 from neuralNetworkSmall import ConditionalUNet
 
 from utils.diffusion import f, g, b, noisify
+from utils.dataHandling import DataProvider
 
 def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float, num_substeps: int) -> torch.Tensor:
     """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
@@ -64,32 +61,18 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
     # Determine device and set up model and loss function accordingly
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    data: DataProvider = DataProvider(args=args)
+    train_dataloader, _ = data.get_datasets_for_training()
+
 
     print('\nInitialize the teacher.')
-    teacher = ConditionalUNet(in_channels=3, out_channels=3).to(device)
+    teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     teacher.load_state_dict(torch.load(args.model, map_location=device))
 
 
     print('\nInitialize the student.')
-    student = ConditionalUNet(in_channels=3, out_channels=3).to(device)
+    student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     student.load_state_dict(torch.load(args.model, map_location=device))
-
-
-    print('\nLoad and transform the dataset')
-    transform = v2.Compose([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),  # Scales to [0, 1]
-        v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Shifts to [-1, 1]
-    ])
-
-    training_data = datasets.CIFAR10(    # type: ignore
-        root="../data",
-        train=True,
-        download=True,
-        transform=transform
-    )
-
-    train_dataloader = DataLoader(training_data, batch_size=128, shuffle=True)    # type: ignore
 
 
     print('\nSet optimizer to AdamW')
@@ -98,9 +81,11 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
 
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
+    # ! This should just be the fraction of teacher_steps / student_steps
     num_substeps = 4
 
     # Number of student steps, i.e. in the end we want to sample with 4096 steps which is half of what I use for the diffusion teacher sde
+    # ! Put this into an argument
     num_steps = 2048
 
     # !This needs to match the training setup

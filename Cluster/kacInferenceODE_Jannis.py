@@ -8,15 +8,17 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from utils.sample_kac import TorchKacConstantSampler
+from utils.dataHandling import DataProvider
 
-_IMG_SIZE = 32
 
 class ODEWrapper(torch.nn.Module):
-    def __init__(self, model: torch.nn.Module):
+    def __init__(self, model: torch.nn.Module, data: DataProvider):
         super().__init__()
         self.model = model
         self.nfe = 0
         self.pbar = None
+
+        self.data = data
 
     def forward(self, t: torch.Tensor, x: torch.Tensor):
         self.nfe += 1
@@ -24,7 +26,7 @@ class ODEWrapper(torch.nn.Module):
             self.pbar.set_postfix({"t": f"{t.item():.4f}", "NFE": self.nfe})
 
         B = x.shape[0]
-        x_img = x.view(B, 3, _IMG_SIZE, _IMG_SIZE)
+        x_img = x.view(B, self.data.data_dims.channels, self.data.data_dims.width, self.data.data_dims.height)
         t_vec = torch.full((B,), float(t), device=x.device)
         
         v = self.model(x_img, t_vec)
@@ -32,7 +34,7 @@ class ODEWrapper(torch.nn.Module):
         return v.view(x.shape)
 
 def sample_ode(model: torch.nn.Module, x_T: torch.Tensor, T: float, num_steps: int,
-               device: torch.device, method: str = 'euler', max_batch: int = 512,
+               device: torch.device, data: DataProvider, method: str = 'euler', max_batch: int = 512,
                a_tol: float = 1e-4, r_tol: float = 1e-4):
     """
     args:
@@ -40,7 +42,7 @@ def sample_ode(model: torch.nn.Module, x_T: torch.Tensor, T: float, num_steps: i
         x_T: torch.Tensor - tensor of samples of the noise distribution
     """
     # initialize the ode fn
-    ode_fn = ODEWrapper(model).to(device)
+    ode_fn = ODEWrapper(model, data).to(device)
 
     # track solution paths for later use
     traj: list[torch.Tensor] = []
@@ -71,15 +73,15 @@ def sample_ode(model: torch.nn.Module, x_T: torch.Tensor, T: float, num_steps: i
     return torch.cat(traj, dim=1)
 
 @torch.inference_mode()
-def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler | None, save_path: str) -> None:
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider, sampler: TorchKacConstantSampler | None, save_path: str) -> None:
     device = next(model.parameters()).device
-    
+
     # Assert that a properly inititialized sampler has been passed
     assert isinstance(sampler, TorchKacConstantSampler)
 
     # Initiate Kac noise
     t = torch.ones(args.num_samples, 1, device=device) * args.T
-    x_T = sampler.sample(t.squeeze(1), dim=3*32*32).to(device)
+    x_T = sampler.sample(t.squeeze(1), dim=data.data_dims.total_dimension).to(device)
     
     # Map command-line args to torchdiffeq methods
     method_map = {
@@ -92,6 +94,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: To
     
     full_traj = sample_ode(
         model=model,
+        data = data,
         x_T=x_T,
         T=1.0,
         num_steps=args.num_steps,
@@ -103,7 +106,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: To
     )
     
     # Extract the final step (t=0)
-    samples = full_traj[-1].view(args.num_samples, 3, 32, 32)
+    samples = full_traj[-1].view(args.num_samples, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
     
     print(f"Generated samples shape: {samples.shape}")
 

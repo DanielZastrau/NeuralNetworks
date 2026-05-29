@@ -1,12 +1,9 @@
 import argparse
 
 import torch
-from torchvision import datasets    # type: ignore
-from torch.utils.data import DataLoader
-from torchvision.transforms import v2    # type: ignore
-
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
+from utils.dataHandling import DataProvider
 
 def train(dataloader, model: torch.nn.Module, loss_fn: object,
           optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -44,7 +41,7 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
 
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
-def test(dataloader, model: torch.nn.Module, loss_fn: object):
+def test(dataloader, model: torch.nn.Module, loss_fn: object):    # type: ignore    due to type of dataloader partially unknown warning
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_batches = len(dataloader)
@@ -59,44 +56,9 @@ def test(dataloader, model: torch.nn.Module, loss_fn: object):
     print(f"Test Avg loss: {test_loss.item() / num_batches:>8f} \n")
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, save_path: str):
+def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, data: DataProvider, save_path: str):
 
-    print('\nSetting the transform')
-    transform = v2.Compose([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),  # Scales to [0, 1]
-        v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Shifts to [-1, 1]
-    ])
-
-    print('\nLoading train and test data')
-    training_data = datasets.CIFAR10(
-        root=args.data_dir if args.where == 'cluster' else "../data",
-        train=True,
-        download=True,
-        transform=transform,
-    )
-
-    test_data = datasets.CIFAR10(
-        root=args.data_dir if args.where == 'cluster' else "../data",
-        train=False,
-        download=True,
-        transform=transform
-    )
-
-    # Create data loaders.
-    train_dataloader = DataLoader(    # type: ignore
-        training_data,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True if args.where == 'cluster' else False
-    )
-    test_dataloader = DataLoader(    # type: ignore
-        test_data,
-        batch_size=args.batch_size,
-        num_workers=4,
-        pin_memory=True if args.where == 'cluster' else False
-    )
+    train_dataloader, test_dataloader = data.get_datasets_for_training()
 
     print('\nSetting optimizer and learning rates')
     # Define step counts
