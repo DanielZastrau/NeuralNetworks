@@ -14,15 +14,16 @@ from utils.diffusion import f, g, b
 import matplotlib.pyplot as plt
 
 from utils.sample_kac import TorchKacConstantSampler    # only imported for uniform typing
+from utils.dataHandling import DataProvider
 
 @torch.inference_mode()
-def sample(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
+def sample(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider) -> torch.Tensor:
     print(f"Sampling {args.num_samples} images using adaptive Probability Flow ODE (RK45)...")
     device = next(model.parameters()).device
-    
+
     # The authors recommend 1e-5 or 1e-3 for adaptive ODE sampling
     epsilon = 1e-5
-    shape = (args.num_samples, 3, 32, 32)
+    shape = (args.num_samples, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
     
     # Initialize x with random noise and flatten for SciPy
     x = torch.randn(shape, device=device)
@@ -69,13 +70,13 @@ def sample(args: argparse.Namespace, model: torch.nn.Module) -> torch.Tensor:
     
     return x_final
 
-def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: TorchKacConstantSampler | None, save_path: str):
+def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider, sampler: TorchKacConstantSampler | None, save_path: str):
     """
     The sampler argument only exists so that the full wrapper does not show a warning
     """
 
     # generate 64 images
-    samples = sample(args=args, model=model)
+    samples = sample(args=args, model=model, data=data)
     print(f"Generated samples shape: {samples.shape}")
 
     samples = (samples + 1.0) / 2.0
@@ -86,7 +87,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, sampler: To
         grid = make_grid(samples, nrow=8, padding=2, normalize=False)
 
         plt.figure(figsize=(8, 8))
-        plt.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap="gray", vmin=0.0, vmax=1.0)
+        plt.imshow(grid.permute(1, 2, 0).cpu().numpy())
         plt.axis("off")
 
         plt.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0)

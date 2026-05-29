@@ -1,79 +1,25 @@
-import os
 import argparse
 
 import torch
-from PIL import Image
-from torch.utils.data import DataLoader, Dataset, Subset
-from torchvision import transforms    # type: ignore
-from torchvision.datasets import CIFAR10    # type: ignore
 from torchmetrics.image.fid import FrechetInceptionDistance
 
-class FlatDirectoryDataset(Dataset):
-    """Loads images from a flat directory without requiring class subfolders."""
-    def __init__(self, directory: str, transform=None):
-        self.directory = directory
-        self.transform = transform
-        self.image_files = [
-            f for f in os.listdir(directory) 
-            if f.lower().endswith(('.png', '.jpg', '.jpeg'))
-        ]
-        if len(self.image_files) == 0:
-            raise FileNotFoundError(f"No images found in {directory}")
+from utils.dataHandling import DataProvider
 
-    def __len__(self):
-        return len(self.image_files)
 
-    def __getitem__(self, idx):
-        img_path = os.path.join(self.directory, self.image_files[idx])
-        image = Image.open(img_path).convert('RGB')
-        
-        if self.transform:
-            image = self.transform(image)
-            
-        # Return a dummy label to match CIFAR10 tuple structure (image, label)
-        return image, 0 
-
-def evaluate_fid(args: argparse.Namespace, fake_dir: str, batch_size: int = 128, feature_dim: int = 2048):
+def evaluate_fid(args: argparse.Namespace, data: DataProvider, path_to_generated_samples: str, feature_dim: int = 2048):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     fid = FrechetInceptionDistance(feature=feature_dim, normalize=True).to(device)
 
-    # InceptionV3 operates optimally on 299x299 images
-    transform = transforms.Compose([
-        transforms.Resize((299, 299)),
-        transforms.ToTensor() 
-    ])
-
-    # Load Full Datasets
-    print("Loading datasets...")
-    real_dataset_full = CIFAR10(
-        root=args.data_dir if args.where == 'cluster' else '../data',
-        train=False,
-        download=True,
-        transform=transform
-    )
-    fake_dataset_full = FlatDirectoryDataset(directory=fake_dir, transform=transform)
-
-    # Validate requested sample size
-    if len(real_dataset_full) < args.num_samples:
-        raise ValueError(f"Requested {args.num_samples} samples, but CIFAR10 test set only has {len(real_dataset_full)}.")
-    if len(fake_dataset_full) < args.num_samples:
-        raise ValueError(f"Requested {args.num_samples} samples, but fake directory only has {len(fake_dataset_full)}.")
-
-    # Slice down to exactly `num_samples`
-    real_dataset = Subset(real_dataset_full, range(args.num_samples))    # type: ignore
-    fake_dataset = Subset(fake_dataset_full, range(args.num_samples))    # type: ignore
-
-    real_loader = DataLoader(real_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
-    fake_loader = DataLoader(fake_dataset, batch_size=batch_size, num_workers=4)    # type: ignore
+    dataset_loader, generated_set_loader = data.get_dataset_for_eval(path_to_generated_samples=path_to_generated_samples)
 
     print(f"Extracting features from {args.num_samples} real CIFAR-10 images...")
-    for images, _ in real_loader:
+    for images, _ in dataset_loader:
         images = images.to(device)
         fid.update(images, real=True)
 
     print(f"Extracting features from {args.num_samples} generated images...")
-    for images, _ in fake_loader:
+    for images, _ in generated_set_loader:
         images = images.to(device)
         fid.update(images, real=False)
 
@@ -82,10 +28,10 @@ def evaluate_fid(args: argparse.Namespace, fake_dir: str, batch_size: int = 128,
     
     return fid_score.item()
 
-def eval_wrapper(args: argparse.Namespace, img_path: str):
+def eval_wrapper(args: argparse.Namespace, data: DataProvider, img_path: str):
     
     try:
-        score = evaluate_fid(args=args, fake_dir=img_path, batch_size=128)
+        score = evaluate_fid(args=args, data=data, path_to_generated_samples=img_path)
         print(f"FID Score ({args.num_samples} samples): {score:.4f}")
     except Exception as e:
         print(f"Evaluation failed: {e}")
