@@ -66,14 +66,14 @@ class DataProvider():
         ])
 
         training_data = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else "../data",
+            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
             train=True,
             download=True,
             transform=transform,
         )
 
         test_data = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else "../data",
+            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
             train=False,
             download=True,
             transform=transform
@@ -106,7 +106,7 @@ class DataProvider():
         ])
 
         eval_set = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else '../data',
+            root=self.args.data_dir if self.args.where == 'cluster' else './data',
             train=False,
             download=True,
             transform=transform

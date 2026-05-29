@@ -5,50 +5,79 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
+    # ! general setup
     parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], default='diffusion',
                         help='which model do you want to run')
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'full', 'sampleeval'], default='full',
+    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'full', 'sampleeval', 'distill'], default='full',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
+    
+
+    # ! training arguments
+    parser.add_argument('--epochs', type=int, default=200,
+                        help='specifies the amount of epochs in training, and which model to use in sampling and eval')
+    parser.add_argument('--batch_size', type=int, default=128,
+                        help='only needed for training')
+    
+
+    # ! sampling arguments
     parser.add_argument('--sampler_diff', type=str, choices=['sde', 'pfode'], default='sde',
                         help='only required if the "which" flag is set to "diffusion" defaults to euler-maruyama scheme of the reverse time SDE')
     parser.add_argument('--sampler_kac', type=str, choices=['ee', 'rk2', 'rk45'], default='rk45',
                         help='only required if the "which" flag is set to "kac" defaults to flowODE with rk45')    # TODO: might delete this since I only want to be using RK45
     parser.add_argument('--sampler_mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
-    parser.add_argument('--epochs', type=int, default=200,
-                        help='specifies the amount of epochs in training, and which model to use in sampling and eval')
-    parser.add_argument('--batch_size', type=int, default=128,
-                        help='only needed for training')
-    parser.add_argument('--num_steps', type=int, default=8192,
+    
+    parser.add_argument('--num-teacher-steps', type=int, default=8192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
-    parser.add_argument('--num_samples', type=int, default=128,
+    
+    # configuration of the adaptive solver RK45
+    parser.add_argument('--rel_tol', type=float, default=1e-4,
+                        help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
+    parser.add_argument('--abs_tol', type=float, default=1e-4,
+                        help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
+
+
+    # ! dual use for sampling and evaluating
+    parser.add_argument('--num_samples', type=int, default=50_000,
                         help='only needed if sampler_mode is set to "set", specifies how many samples are to be generated')
+
+
+    # ! distillation arguments
+    parser.add_argument('--iterations', type=int, default=100,
+                        help='sets the amount of iterations the student model should be trained for')
+    parser.add_argument('--num-student-steps', type=int, default=1024,
+                        help='specifies the amount of steps the student should do in order to sample, i.e. a 20-step student or a 10-step student.')
+
+ 
+    # ! configuration arguments
     parser.add_argument('--lr', type=float, default=2e-4,
                         help='specifies the learning rate of the training process')
+    parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
+                        help='which dataset you want to train on options include [cifar10]')
+    
+    # of kac
     parser.add_argument('--a', type=float, default=9.0,
                         help='specifies the damping coefficient a of the kac process')
     parser.add_argument('--c', type=float, default=3.0,
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--T', type=float, default=1.0,
                         help='specifies the time horizon T of the kac process')
-    parser.add_argument('--rel_tol', type=float, default=1e-3,
-                        help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
-    parser.add_argument('--abs_tol', type=float, default=1e-3,
-                        help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
+    parser.add_argument('--model', type=str,
+                        help='specifies the path to the model which is supposed to be distilled. Absolute or relative to the execution location')
+    
+    # cluster
     parser.add_argument('--data-dir', type=str,
                         help='the local directory of the node the job runs on in the cluster')
-    parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
-                        help='which dataset you want to train on options include [cifar10]')
 
     args = parser.parse_args()
 
     print(f'\nData directory:  {args.data_dir}\n')
 
 
-    from utils.dataHandling import DataProvider
+    from Cluster.utils.dataHandling import DataProvider
     data = DataProvider(args=args)
 
 
@@ -103,7 +132,7 @@ if __name__ == "__main__":
 
     # Set up model based on location
     if args.where == 'cluster':
-        from neuralNetworkOpenAI import UNetModel
+        from Cluster.neuralNetworkOpenAI import UNetModel
         model = UNetModel(
             image_size=data.data_dims.size, in_channels=data.data_dims.channels,
             out_channels=data.data_dims.channels,
@@ -112,7 +141,7 @@ if __name__ == "__main__":
             num_head_channels=64, channel_mult=(1, 2, 2, 2)
         ).to(device)
     else:    # args.where == 'local'
-        from neuralNetworkSmall import ConditionalUNet
+        from Cluster.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
     if args.what in ['eval', 'sample']:
@@ -128,7 +157,7 @@ if __name__ == "__main__":
     # Set up sampler if needed
     sampler = None
     if args.which == 'kac':
-        from utils.sample_kac import TorchKacConstantSampler
+        from Cluster.utils.sample_kac import TorchKacConstantSampler
         
         sampler = TorchKacConstantSampler(a=args.a, c=args.c, T=args.T, M=50000, K=4096)
         print('\nInstantiated the kac sampler\n')
@@ -136,8 +165,8 @@ if __name__ == "__main__":
 
     # Train the model
     if args.what in ['full', 'train']:
-        from training import training_wrapper
-        from lossFunctions import LossFns
+        from Cluster.training import training_wrapper
+        from Cluster.utils.lossFunctions import LossFns
 
         print(f'\nInstantiating the loss function\n')
         loss_fn: object = LossFns(args=args, sampler=sampler)
@@ -151,11 +180,11 @@ if __name__ == "__main__":
 
         if args.which == 'diffusion':
             if args.sampler_diff == 'sde':
-                from diffusionInferenceSDE import sample_wrapper
+                from Cluster.diffusionInferenceSDE import sample_wrapper
             else:    # args.sampler == 'pfode'
-                from diffusionInferencePFODE import sample_wrapper
+                from Cluster.diffusionInferencePFODE import sample_wrapper
         else:    # args.which == 'kac'
-            from kacInferenceODE_Jannis import sample_wrapper
+            from Cluster.kacInferenceODE_Jannis import sample_wrapper
 
         print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, save_path=save_path)
@@ -163,12 +192,13 @@ if __name__ == "__main__":
 
     # Evaluate the model using FID
     if args.what in ['full', 'eval', 'sampleeval']:
-        from eval import eval_wrapper
+        from Cluster.eval import eval_wrapper
 
         eval_wrapper(args=args, data=data, img_path=save_path)
 
 
     if args.what in ['full', 'distill']:
-        from DiffusionDistillation import distillation_wrapper
+        # ! Need to also implement distillation for all other processes
+        from Cluster.distillation import distillation_wrapper
 
         distillation_wrapper(args=args, save_path=path_to_distilled_student)
