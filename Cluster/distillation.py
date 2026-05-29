@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 
 from Cluster.neuralNetworkSmall import ConditionalUNet
+from Cluster.neuralNetworkOpenAI import UNetModel
 
 from Cluster.utils.diffusion import f, g, b
 from Cluster.utils.dataHandling import DataProvider
@@ -74,12 +75,31 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
 
 
     print('\nInitialize the teacher.')
-    teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+    # TODO  outsource the initializing of the UNetModel to another function as to not replicate it and centrally manage it
+    if args.where == 'local':
+        teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+    else:
+        teacher = UNetModel(
+            image_size=data.data_dims.size, in_channels=data.data_dims.channels,
+            out_channels=data.data_dims.channels,
+            model_channels=128, num_res_blocks=2,
+            attention_resolutions=[16], num_heads=4,
+            num_head_channels=64, channel_mult=(1, 2, 2, 2)
+        ).to(device)
     teacher.load_state_dict(torch.load(path, map_location=device))
 
 
     print('\nInitialize the student.')
-    student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+    if args.where == 'local':
+        student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+    else:
+        student = UNetModel(
+            image_size=data.data_dims.size, in_channels=data.data_dims.channels,
+            out_channels=data.data_dims.channels,
+            model_channels=128, num_res_blocks=2,
+            attention_resolutions=[16], num_heads=4,
+            num_head_channels=64, channel_mult=(1, 2, 2, 2)
+        ).to(device)
     student.load_state_dict(torch.load(path, map_location=device))
 
 
@@ -94,7 +114,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
     num_substeps = args.num_teacher_substeps
-    
+
     # Number of student steps, i.e. in the end we want to sample with M steps
     num_steps = args.num_student_steps
 
