@@ -3,10 +3,11 @@ import argparse
 import torch
 import torch.nn as nn
 
-from neuralNetworkSmall import ConditionalUNet
+from Cluster.neuralNetworkSmall import ConditionalUNet
 
-from utils.diffusion import f, g, b, noisify
-from utils.dataHandling import DataProvider
+from Cluster.utils.diffusion import f, g, b
+from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.noisifier import Noisify
 
 def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float, num_substeps: int) -> torch.Tensor:
     """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
@@ -61,6 +62,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
     # Determine device and set up model and loss function accordingly
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    print('\nInitialized the data')
     data: DataProvider = DataProvider(args=args)
     train_dataloader, _ = data.get_datasets_for_training()
 
@@ -75,18 +77,22 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
     student.load_state_dict(torch.load(args.model, map_location=device))
 
 
+    print('\nGot the noise')
+    noisifier = Noisify(args=args).noisify
+
+
     print('\nSet optimizer to AdamW')
     optimizer = torch.optim.AdamW(student.parameters(), lr=2e-4)
 
 
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
-    # ! This should just be the fraction of teacher_steps / student_steps
-    num_substeps = 4
+    # TODO This should just be the fraction of teacher_steps / student_steps
+    num_substeps = args.num
 
     # Number of student steps, i.e. in the end we want to sample with 4096 steps which is half of what I use for the diffusion teacher sde
-    # ! Put this into an argument
-    num_steps = 2048
+    # TODO
+    num_steps = args.num_student_steps
 
     # !This needs to match the training setup
     # TODO: Since there are dependencies across functionalities, this should be outsourced to a higher hierarchy level from where it can be passed to everything below
@@ -109,7 +115,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str):
         t_batch = linspace_of_endpoints[indices]
 
         # noisify x_batch according to t_batch
-        x_batch_corrupted = noisify(x_0=x_batch, t=t_batch)
+        x_batch_corrupted = noisifier(x0=x_batch, t=t_batch)
 
         # integrate backwards in time using the teacher method and N uniform substeps
         x_target = teacher_integrate(
