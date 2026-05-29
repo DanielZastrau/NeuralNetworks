@@ -14,7 +14,7 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
 
     model.train()
     train_loss = 0
-    
+
     for X, _ in dataloader:
 
         X = X.to(device)
@@ -109,5 +109,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 
-        torch.save(model.state_dict(), save_path)
     print("Done!")
+
+    uncompiled_model = getattr(model, "_orig_mod", model)
+    torch.save(uncompiled_model.state_dict(), save_path)
+    print('Saving the model')
