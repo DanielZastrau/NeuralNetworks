@@ -15,9 +15,8 @@ def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Te
     """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
 
     This is the Euler-Maruyama Scheme also used to solve the SDE formulation of the reverse process.
-
-    TODO: This duplicates code from the other SDE sampling file. Should fix this.
     """
+    # TODO: This duplicates code from the other SDE sampling file. Should fix this.
     device = next(model.parameters()).device
 
     dt_sub = delta_t / num_substeps
@@ -121,26 +120,28 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
     # TODO: Since there are dependencies across functionalities, this should be outsourced to a higher hierarchy level from where it can be passed to everything below
     # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
     eps = 1e-3
-    linspace_of_endpoints = torch.linspace(1, eps, num_steps, dtype=torch.float32)
+    linspace_of_endpoints = torch.linspace(1, eps, num_steps, dtype=torch.float32, device=device)
     delta_t = 1 / num_steps
 
-    teacher.eval()
-    student.train()
+
     for iteration in range(args.iterations):
         print(f'Starting iteration  {iteration}')
         optimizer.zero_grad()
 
         # sample a batch from the dataset
         x_batch, _ = next(iter(train_dataloader))
+        x_batch = x_batch.to(device)
 
         # sample a batch of endpoint time steps
-        indices = torch.randint(0, num_steps, (args.batch_size,))
+        indices = torch.randint(0, num_steps, (args.batch_size,), device=device)
         t_batch = linspace_of_endpoints[indices]
 
         # noisify x_batch according to t_batch
+        # TODO still misses MMD and Schrödinger
         x_batch_corrupted = noisifier(x0=x_batch, t=t_batch)
 
         # integrate backwards in time using the teacher method and N uniform substeps
+        # TODO still misses Kac, MMD, Schrödinger
         x_target = teacher_integrate(
             model=teacher, x_batch=x_batch_corrupted,
             t_batch=t_batch, delta_t=delta_t,
