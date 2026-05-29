@@ -76,22 +76,30 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
     print(f'\nInstantiating the models from {path}')
 
 
-    print('\nInitialize the teacher.')
+    print(f'\nLoading the state dict')
+    state_dict = torch.load(path, map_location=device)
+
+
+    print('\nInitializing the teacher.')
     if args.where == 'local':
         teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     else:
         print('getting the large model teacher')
         teacher = model_getter(args=args).to(device)
-    teacher.load_state_dict(torch.load(path, map_location=device))
+    teacher.load_state_dict(state_dict)
+    teacher.eval()
+    teacher = torch.compile(teacher)
 
 
-    print('\nInitialize the student.')
+    print('\nInitializing the student.')
     if args.where == 'local':
         student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     else:
         print('getting the large model student')
         student = model_getter(args=args).to(device)
-    student.load_state_dict(torch.load(path, map_location=device))
+    student.load_state_dict(state_dict)
+    student.train()
+    student = torch.compile(student)
 
 
     print('\nGot the noise')
