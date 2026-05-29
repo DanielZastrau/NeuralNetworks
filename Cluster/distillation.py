@@ -9,6 +9,7 @@ from Cluster.neuralNetworkOpenAI import UNetModel
 from Cluster.utils.diffusion import f, g, b
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
+from Cluster.utils.modelGetter import model_getter
 
 def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float, num_substeps: int) -> torch.Tensor:
     """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
@@ -72,20 +73,15 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
         path = model_path
     else:
         path = args.model
+    print(f'\nInstantiating the models from {path}')
 
 
     print('\nInitialize the teacher.')
-    # TODO  outsource the initializing of the UNetModel to another function as to not replicate it and centrally manage it
     if args.where == 'local':
         teacher = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     else:
-        teacher = UNetModel(
-            image_size=data.data_dims.size, in_channels=data.data_dims.channels,
-            out_channels=data.data_dims.channels,
-            model_channels=128, num_res_blocks=2,
-            attention_resolutions=[16], num_heads=4,
-            num_head_channels=64, channel_mult=(1, 2, 2, 2)
-        ).to(device)
+        print('getting the large model teacher')
+        teacher = model_getter(args=args).to(device)
     teacher.load_state_dict(torch.load(path, map_location=device))
 
 
@@ -93,13 +89,8 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
     if args.where == 'local':
         student = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     else:
-        student = UNetModel(
-            image_size=data.data_dims.size, in_channels=data.data_dims.channels,
-            out_channels=data.data_dims.channels,
-            model_channels=128, num_res_blocks=2,
-            attention_resolutions=[16], num_heads=4,
-            num_head_channels=64, channel_mult=(1, 2, 2, 2)
-        ).to(device)
+        print('getting the large model student')
+        student = model_getter(args=args).to(device)
     student.load_state_dict(torch.load(path, map_location=device))
 
 
