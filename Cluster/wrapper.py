@@ -53,10 +53,17 @@ if __name__ == "__main__":
 
 
     # Set up the model path
-    path_to_model = f"{args.where}_{args.which}_{args.epochs}_model.pth"
+    path_to_model = f"{args.where}_{args.which}_epochs{args.epochs}_model.pth"
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}.pth"
     print(f'\nDetermined model path:  {path_to_model}\n')
+
+
+    # Set up the student model path
+    path_to_distilled_student = f"{args.where}_{args.which}_{args.epochs}_model_student.pth"
+    if args.where == 'cluster':
+        path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}.pth"
+    print(f'\nDetermined student model path:  {path_to_distilled_student}\n')
 
 
     # Set up image path
@@ -153,3 +160,9 @@ if __name__ == "__main__":
         from eval import eval_wrapper
 
         eval_wrapper(args=args, img_path=save_path)
+
+
+    if args.what in ['full', 'distill']:
+        from DiffusionDistillation import distillation_wrapper
+
+        distillation_wrapper(args=args, save_path=path_to_distilled_student)
