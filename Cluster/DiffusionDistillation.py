@@ -53,11 +53,12 @@ def student_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Te
     
     In the future I want to implement other student integrators. SDE Euler-Maruyama, ODE RK45"""
 
-    # For now do the explicit euler step as proposed in the algorithm by "Han et al 2025 - DistillKac: Few Step Image Generation via Damped Wave Equations"
+    # TODO implement another integrator
+    # * explicit euler step as proposed in the algorithm by "Han et al 2025 - DistillKac: Few Step Image Generation via Damped Wave Equations"
     return x_batch - model(x_batch, t_batch) * delta_t
 
 
-def distillation_wrapper(args: argparse.Namespace):
+def distillation_wrapper(args: argparse.Namespace, save_path: str):
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
@@ -97,11 +98,15 @@ def distillation_wrapper(args: argparse.Namespace):
 
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
-    num_substeps = 2
+    num_substeps = 4
 
     # Number of student steps, i.e. in the end we want to sample with 4096 steps which is half of what I use for the diffusion teacher sde
-    num_steps = 4096
-    eps = 1e-5    # 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
+    num_steps = 2048
+
+    # !This needs to match the training setup
+    # TODO: Since there are dependencies across functionalities, this should be outsourced to a higher hierarchy level from where it can be passed to everything below
+    # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
+    eps = 1e-3
     linspace_of_endpoints = torch.linspace(1, eps, num_steps, dtype=torch.float32)
     delta_t = 1 / num_steps
 
@@ -143,14 +148,4 @@ def distillation_wrapper(args: argparse.Namespace):
         torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=1.0)
         optimizer.step()
 
-    student._save_to_state_dict(f'{args.model[:-4]}_student.pth')
-
-if __name__=="__main__":
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('--model', type=str, required=True)
-    parser.add_argument('--iterations', type=int, required=True)
-
-    args = parser.parse_args()
-
-    distillation_wrapper(args=args)
+    torch.save(student.state_dict(), save_path)
