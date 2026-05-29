@@ -2,7 +2,7 @@ import argparse
 
 import torch
 
-from utils.sample_kac import TorchKacConstantSampler
+from Cluster.utils.sample_kac import TorchKacConstantSampler
 
 class LossFns():
 
@@ -17,7 +17,7 @@ class LossFns():
             self.loss = self.kac
 
     def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
-        from utils.diffusion import b
+        from Cluster.utils.diffusion import b
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -52,8 +52,8 @@ class LossFns():
         return loss
     
     def kac(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
-        from utils.velo_utils import compute_velocity
-        from utils.kac import f, df, g, dg
+        from Cluster.utils.velo_utils import compute_velocity
+        from Cluster.utils.kac import f, df, g, dg
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

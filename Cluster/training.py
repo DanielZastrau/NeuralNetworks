@@ -3,7 +3,7 @@ import argparse
 import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
-from utils.dataHandling import DataProvider
+from Cluster.utils.dataHandling import DataProvider
 
 def train(dataloader, model: torch.nn.Module, loss_fn: object,
           optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
@@ -15,7 +15,10 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
     model.train()
     train_loss = 0
 
+    n = 0
     for X, _ in dataloader:
+        print(f'Starting batch {n}')
+
         X = X.to(device)
         optimizer.zero_grad()
 
@@ -38,6 +41,10 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
         # Detach removes the tensor from the computation graph to save memory, 
         # but keeps the value on the GPU, avoiding CPU synchronization.
         train_loss += loss.detach()
+
+        n += 1
+        if n == 1:
+            break
 
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
@@ -104,7 +111,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
         print(f"Epoch {epoch+1}\n-------------------------------")
 
         train(train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
-        test(test_dataloader, model, loss_fn)
+        # test(test_dataloader, model, loss_fn)
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 

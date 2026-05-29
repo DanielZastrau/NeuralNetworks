@@ -3,18 +3,17 @@
 import argparse
 import os
 
-from scipy.integrate import solve_ivp    # type: ignore
-import numpy as np
-
 import torch
+import numpy as np
+from scipy.integrate import solve_ivp    # type: ignore
 from torchvision.utils import make_grid, save_image    # type: ignore
-
-from utils.diffusion import f, g, b
-
 import matplotlib.pyplot as plt
 
-from utils.sample_kac import TorchKacConstantSampler    # only imported for uniform typing
-from utils.dataHandling import DataProvider
+from Cluster.utils.diffusion import f, g, b
+
+
+from Cluster.utils.sample_kac import TorchKacConstantSampler    # only imported for uniform typing
+from Cluster.utils.dataHandling import DataProvider
 
 @torch.inference_mode()
 def sample(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider) -> torch.Tensor:

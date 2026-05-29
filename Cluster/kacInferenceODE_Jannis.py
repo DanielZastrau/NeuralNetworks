@@ -7,8 +7,8 @@ from torchvision.utils import make_grid, save_image    # type: ignore
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 
-from utils.sample_kac import TorchKacConstantSampler
-from utils.dataHandling import DataProvider
+from Cluster.utils.sample_kac import TorchKacConstantSampler
+from Cluster.utils.dataHandling import DataProvider
 
 
 class ODEWrapper(torch.nn.Module):
@@ -97,7 +97,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
         data = data,
         x_T=x_T,
         T=1.0,
-        num_steps=args.num_steps,
+        num_steps=args.num_teacher_steps,
         device=device,
         method=solver_method,
         max_batch=args.num_samples,
