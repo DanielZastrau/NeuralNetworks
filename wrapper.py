@@ -30,9 +30,11 @@ if __name__ == "__main__":
     parser.add_argument('--sampler-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
-    parser.add_argument('--num-teacher-steps', type=int, default=8192,
+    parser.add_argument('--num-steps', type=int, default=8192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
-    
+    parser.add_argument('--sampling-batch-size', type=int, default=512,
+                        help='specifies how many samples are to be processed at the same time. I.e. the tensor shape.')
+
     # configuration of the adaptive solver RK45
     parser.add_argument('--rel-tol', type=float, default=1e-4,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
@@ -46,6 +48,10 @@ if __name__ == "__main__":
 
 
     # ! distillation arguments
+    parser.add_argument('--distill-teacher-sampler', type=str,
+                        help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to args.sampler-xyz')
+    parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'],
+                        help='provides the possibility to set a different student sampler than ee, if not set defaults to explicit euler')
     parser.add_argument('--iterations', type=int, default=100,
                         help='sets the amount of iterations the student model should be trained for')
     parser.add_argument('--num-student-steps', type=int, default=1024,
@@ -62,6 +68,13 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
                         help='which dataset you want to train on options include [cifar10]')
     
+
+    # of diffusion
+    # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
+    parser.add_argument('--time-truncation', type=float, default=1e-5,
+                        help='lets you set a cutoff time for the diffusion model, defaults to 1e-5')
+    
+
     # of kac
     parser.add_argument('--a', type=float, default=9.0,
                         help='specifies the damping coefficient a of the kac process')
@@ -81,6 +94,12 @@ if __name__ == "__main__":
     from Cluster.argumentDependencyChecker import assert_dependencies
     assert_dependencies(args=args)
 
+    if args.distill_teacher_sampler is None:
+        if args.which == 'diffusion':
+            args.distill_teacher_sampler = args.sampler_diff
+
+        else:
+            args.distill_teacher_sampler = 'rk2'
 
     print(f'\nData directory:  {args.data_dir}\n')
 
@@ -115,7 +134,7 @@ if __name__ == "__main__":
     if args.which == 'diffusion':
         base_name = f"{base_name}_sampler{args.sampler_diff}"
         if args.sampler_diff == 'sde':
-            base_name = f"{base_name}_steps{args.num_teacher_steps}"
+            base_name = f"{base_name}_steps{args.num_steps}"
 
     else:    # args.which == 'kac'
         base_name = f"{base_name}_sampler{args.sampler_kac}"
@@ -145,7 +164,7 @@ if __name__ == "__main__":
 
         size = 'large'
     else:    # args.where == 'local'
-        from Cluster.neuralNetworkSmall import ConditionalUNet
+        from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
         size = 'small'
@@ -169,6 +188,10 @@ if __name__ == "__main__":
         print('\nInstantiated the kac sampler\n')
     
 
+    from Cluster.utils.reversals import Reversal
+    reversal_fns = Reversal(args=args)
+
+
     # Train the model
     if args.what in ['full', 'train']:
         print('----------------------------------------------------------------------------------------------------')
@@ -187,15 +210,9 @@ if __name__ == "__main__":
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
 
-        if args.which == 'diffusion':
-            if args.sampler_diff == 'sde':
-                from Cluster.diffusionInferenceSDE import sample_wrapper
-            else:    # args.sampler == 'pfode'
-                from Cluster.diffusionInferencePFODE import sample_wrapper
-        else:    # args.which == 'kac'
-            from Cluster.kacInferenceODE_Jannis import sample_wrapper
+        from Cluster.sampling import sample_wrapper
 
-        sample_wrapper(args=args, model=model, data=data, sampler=sampler, save_path=save_path)
+        sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=save_path)
 
 
     # Evaluate the model using FID
@@ -209,7 +226,7 @@ if __name__ == "__main__":
 
     if args.what in ['full', 'distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the {args.num_teacher_steps}step teacher model {path_to_model} into a {args.num_student_steps}step student')
+        print(f'\nDistilling the {args.num_steps}step teacher model {path_to_model} into a {args.num_student_steps}step student')
 
         # TODO Need to also implement distillation for all other processes, MMD and Schrödinger and Kac
         from Cluster.distillation import distillation_wrapper
