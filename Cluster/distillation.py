@@ -3,13 +3,13 @@ import argparse
 import torch
 import torch.nn as nn
 
-from Cluster.neuralNetworkSmall import ConditionalUNet
-from Cluster.neuralNetworkOpenAI import UNetModel
+from Cluster.networks.neuralNetworkSmall import ConditionalUNet
+from Cluster.utils.modelGetter import model_getter
 
 from Cluster.utils.diffusion import f, g, b
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
-from Cluster.utils.modelGetter import model_getter
+from Cluster.utils.reversals import Reversal
 
 def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float, num_substeps: int) -> torch.Tensor:
     """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
@@ -47,17 +47,8 @@ def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Te
     return x_star
 
 
-def student_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float) -> torch.Tensor:
-    """Integrates the student over [t*, t* - delta_t]
-    
-    In the future I want to implement other student integrators. SDE Euler-Maruyama, ODE RK45"""
 
-    # TODO implement another integrator
-    # * explicit euler step as proposed in the algorithm by "Han et al 2025 - DistillKac: Few Step Image Generation via Damped Wave Equations"
-    return x_batch - model(x_batch, t_batch) * delta_t
-
-
-def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: str = ''):
+def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal, model_path: str = ''):
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
@@ -116,10 +107,12 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
     # Number of student steps, i.e. in the end we want to sample with M steps
     num_steps = args.num_student_steps
 
-    # !This needs to match the training setup
-    # TODO: Since there are dependencies across functionalities, this should be outsourced to a higher hierarchy level from where it can be passed to everything below
-    # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
-    eps = 1e-3
+    if args.which == 'diffusion':
+        # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
+        eps = args.time_truncation
+    else:
+        eps = 0
+    
     linspace_of_endpoints = torch.linspace(1, eps, num_steps, dtype=torch.float32, device=device)
     delta_t = 1 / num_steps
 
@@ -142,16 +135,20 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, model_path: s
 
         # integrate backwards in time using the teacher method and N uniform substeps
         # TODO still misses Kac, MMD, Schrödinger
-        x_target = teacher_integrate(
-            model=teacher, x_batch=x_batch_corrupted,
-            t_batch=t_batch, delta_t=delta_t,
-            num_substeps=num_substeps
+        x_target = reversal_fns.teacher_integrate(
+            model=teacher,
+            x_batch=x_batch_corrupted,
+            t_start=t_batch,
+            dt=delta_t,
+            num_substeps=num_substeps,
         )
 
         # integrate backwards in time using the student method and 1 substep
-        x_calc = student_integrate(
-            model=student, x_batch=x_batch_corrupted,
-            t_batch=t_batch, delta_t=delta_t,
+        x_calc = reversal_fns.student_integrate(
+            model=student,
+            x_batch=x_batch_corrupted,
+            t_batch=t_batch,
+            dt=delta_t
         )
 
         # compute the loss and update the weights

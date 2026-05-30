@@ -4,8 +4,9 @@ import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 
 from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.lossFunctions import LossFns
 
-def train(dataloader, model: torch.nn.Module, loss_fn: object,
+def train(dataloader, model: torch.nn.Module, loss_fn: LossFns,
           optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
           scaler: torch.amp.GradScaler):
     
@@ -22,6 +23,7 @@ def train(dataloader, model: torch.nn.Module, loss_fn: object,
 
         # Runs the forward pass in mixed precision
         with torch.amp.autocast(device_type=device_type):
+            if loss_fn.args.which == 'diffusion'
             loss = loss_fn.loss(model=model, mini_batch=X)
 
         # Scales the loss and completes the backward pass

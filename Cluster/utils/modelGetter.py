@@ -1,6 +1,6 @@
 import argparse
 
-from Cluster.neuralNetworkOpenAI import UNetModel
+from Cluster.networks.neuralNetworkOpenAI import UNetModel
 from Cluster.utils.dataHandling import DataProvider
 
 def model_getter(args: argparse.Namespace):

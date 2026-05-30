@@ -5,16 +5,13 @@ import torch
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 
 class LossFns():
+    """Provides the loss functions such that the training framework can stay the same, currently only used in the training module"""
+
 
     def __init__(self, args: argparse.Namespace, sampler: TorchKacConstantSampler | None):
         self.args = args
         self.sampler = sampler
 
-        if args.which == 'diffusion':
-            self.loss = self.diffusion
-
-        elif args.which == 'kac':
-            self.loss = self.kac
 
     def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.diffusion import b
@@ -24,8 +21,9 @@ class LossFns():
 
         x_0 = mini_batch
 
-        # sample time steps t uniformly from [0, 1)
+        # sample time steps t uniformly from [eps, 1)
         t = torch.rand(mini_batch.size(0), device=device)
+        t = torch.clamp(t, min=self.args.time_truncation, max=1)
 
         # draw standard gaussian noise matching the shape of x_0
         noise = torch.randn_like(x_0)
