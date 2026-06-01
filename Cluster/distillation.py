@@ -115,6 +115,8 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
             dt=delta_t
         )
 
+        print(f'DEBUGGING: x_target  {x_target.mean()}    x_calc {x_calc.mean()}')
+
         # compute the loss and update the weights
         loss = nn.functional.mse_loss(x_target, x_calc)
         print(f'---loss  {loss.item()}---\n')
