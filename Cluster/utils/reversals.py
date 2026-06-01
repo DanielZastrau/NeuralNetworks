@@ -1,8 +1,6 @@
 import argparse
 
 import torch
-import numpy as np
-from scipy.integrate import solve_ivp    # type: ignore
 
 from Cluster.utils.dataHandling import DataProvider
 
@@ -66,7 +64,7 @@ class Reversal():
             assert t_start == self.args.T
             assert t_end == self.args.time_truncation
             
-            ode_fn = self.DiffusionODEDerivative(model=model).to(device)
+            ode_fn = self.DiffusionODEDerivative(model=model, min_t=self.args.time_truncation).to(device)
 
         else:    # self.args.which == 'kac'
             assert t_start == self.args.T
@@ -91,6 +89,8 @@ class Reversal():
                 rtol=self.args.rel_tol, 
                 atol=self.args.abs_tol
             )
+
+            print(f'It took  {ode_fn.nfe}  nfes to complete with a{self.args.abs_tol}  r{self.args.rel_tol}')
 
         # Extract terminal state
         return sol[-1]
@@ -159,7 +159,15 @@ class Reversal():
         # * Euler Maruyama Scheme as described in "Song et al 2021"
         from Cluster.utils.diffusion import f, g, b
 
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        # Safeguard: Vectorized clipping of dt to ensure t_start - dt >= time_truncation
+        if not isinstance(dt, torch.Tensor):
+            dt = torch.full_like(t_start, dt)
+        elif dt.numel() == 1:
+            dt = dt.expand_as(t_start)
+            
+        max_allowed_dt = torch.clamp(t_start - self.args.time_truncation, min=0.0)
+        dt = torch.minimum(dt, max_allowed_dt)
+
         dt_sub = dt / num_substeps
         x_curr = x_batch.clone()
         t_curr = t_start.clone()
@@ -178,10 +186,10 @@ class Reversal():
                 pred_score = - pred_noise / torch.sqrt(1 - b_t**2)
 
                 # Scale updates explicitly by dt and sqrt(dt)
-                drift_update = f_t_x * dt_sub
-                score_update = (g_t ** 2) * pred_score * dt_sub
+                drift_update = f_t_x * dt_sub.view(-1, 1, 1, 1)
+                score_update = (g_t ** 2) * pred_score * dt_sub.view(-1, 1, 1, 1)
                 if noise_injection_bool:
-                    noise_injection = g_t * torch.sqrt(torch.tensor(dt_sub, device=device)) * torch.randn_like(x_curr)
+                    noise_injection = g_t * torch.sqrt(dt_sub).view(-1, 1, 1, 1) * torch.randn_like(x_curr)
                 else:
                     noise_injection = 0.0
 
@@ -198,26 +206,39 @@ class Reversal():
 
     class DiffusionODEDerivative(torch.nn.Module):
         """PyTorch derivative wrapper for the probability flow ODE."""
-        def __init__(self, model: torch.nn.Module):
+        def __init__(self, model: torch.nn.Module, min_t: float):
             super().__init__()
             self.model = model
+            self.nfe = 0
+            self.min = min_t
 
         def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
             from Cluster.utils.diffusion import f, g, b
-            
+
+            self.nfe += 1
+
+            # Safeguard: prevent adaptive solver overshoot into negative time
+            t_safe = torch.clamp(t, min=self.min)
+
             # Broadcast scalar t to batch size
-            t_vec = torch.full((x.shape[0],), float(t), device=x.device)
+            t_vec = torch.full((x.shape[0],), float(t_safe), device=x.device)
             
             f_t_x = f(t_vec, x)
             g_t = g(t_vec).view(-1, 1, 1, 1)
             b_t = b(t_vec).view(-1, 1, 1, 1)
             
             pred_noise = self.model(x, t_vec)
-            pred_score = -pred_noise / torch.sqrt(1 - b_t**2)
+
+            # Numerical safeguard: prevent division by zero or sqrt of negative numbers
+            variance = torch.clamp(1 - b_t**2, min=1e-8)
+            pred_score = -pred_noise / torch.sqrt(variance)
             
             # * Diffusion Inference using Probability Flow ODE as described in Song et al. 2021
             # Probability flow ODE: dx/dt = f(x,t) - 0.5 * g(t)^2 * score
-            return f_t_x - 0.5 * (g_t ** 2) * pred_score
+            dx_dt = f_t_x - 0.5 * (g_t ** 2) * pred_score
+
+            # Sanitize output to guarantee the adaptive solver doesn't underflow on anomalies
+            return torch.nan_to_num(dx_dt, nan=0.0, posinf=1e5, neginf=-1e5)
 
 
     class KacODEDerivative(torch.nn.Module):
@@ -231,8 +252,11 @@ class Reversal():
             self.channels = channels
             self.width = width
             self.height = height
+            self.nfe = 0
 
         def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+
+            self.nfe += 1
 
             B = x.shape[0]
             # Reshape 1D flattened vectors back to image tensors for the UNet

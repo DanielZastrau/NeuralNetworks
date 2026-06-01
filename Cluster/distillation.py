@@ -6,49 +6,11 @@ import torch.nn as nn
 from Cluster.networks.neuralNetworkSmall import ConditionalUNet
 from Cluster.utils.modelGetter import model_getter
 
-from Cluster.utils.diffusion import f, g, b
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
 from Cluster.utils.reversals import Reversal
 
-def teacher_integrate(model: nn.Module, x_batch: torch.Tensor, t_batch: torch.Tensor, delta_t: float, num_substeps: int) -> torch.Tensor:
-    """Integrates the teacher over [t*, t* - delta_t] using num_substeps many uniform substeps
-
-    This is the Euler-Maruyama Scheme also used to solve the SDE formulation of the reverse process.
-    """
-    # TODO: This duplicates code from the other SDE sampling file. Should fix this.
-    device = next(model.parameters()).device
-
-    dt_sub = delta_t / num_substeps
-    x_star = x_batch.clone()
-    t_curr = t_batch.clone()
-    
-    with torch.no_grad():
-        for _ in range(num_substeps):
-
-            # Get continuous coefficients
-            f_t_x = f(t_curr, x_star)
-            g_t = g(t_curr).view(-1, 1, 1, 1)
-            b_t = b(t_curr).view(-1, 1, 1, 1)
-
-            # Predict score using continuous time
-            pred_noise = model(x_star, t_curr)
-            pred_score = - pred_noise / torch.sqrt(1 - b_t**2)
-
-            # 2. Scale updates explicitly by dt and sqrt(dt)
-            drift_update = f_t_x * dt_sub
-            score_update = (g_t ** 2) * pred_score * dt_sub
-            noise_injection = g_t * torch.sqrt(torch.tensor(dt_sub, device=device)) * torch.randn_like(x_star)
-            
-            # Continuous SDE reverse step formula
-            x_star = x_star - drift_update + score_update + noise_injection
-            t_curr -= dt_sub
-
-    return x_star
-
-
-
-def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal, model_path: str = ''):
+def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal, model_path: str = '') -> torch.nn.Module:
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
@@ -78,7 +40,8 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         teacher = model_getter(args=args).to(device)
     teacher.load_state_dict(state_dict)
     teacher.eval()
-    teacher = torch.compile(teacher)
+    if args.where == 'cluster':
+        teacher = torch.compile(teacher)
 
 
     print('\nInitializing the student.')
@@ -89,7 +52,8 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         student = model_getter(args=args).to(device)
     student.load_state_dict(state_dict)
     student.train()
-    student = torch.compile(student)
+    if args.where == 'cluster':
+        student = torch.compile(student)
 
 
     print('\nGot the noise')
@@ -161,3 +125,5 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         optimizer.step()
 
     torch.save(student.state_dict(), save_path)
+
+    return student

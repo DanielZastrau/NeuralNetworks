@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.lossFunctions import LossFns
 
-def train(dataloader, model: torch.nn.Module, loss_fn: LossFns,
+def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns,
           optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
           scaler: torch.amp.GradScaler):
     
@@ -23,7 +23,6 @@ def train(dataloader, model: torch.nn.Module, loss_fn: LossFns,
 
         # Runs the forward pass in mixed precision
         with torch.amp.autocast(device_type=device_type):
-            if loss_fn.args.which == 'diffusion'
             loss = loss_fn.loss(model=model, mini_batch=X)
 
         # Scales the loss and completes the backward pass
@@ -42,9 +41,12 @@ def train(dataloader, model: torch.nn.Module, loss_fn: LossFns,
         # but keeps the value on the GPU, avoiding CPU synchronization.
         train_loss += loss.detach()
 
+        if args.proof_of_concept:
+            break
+
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
-def test(dataloader, model: torch.nn.Module, loss_fn: object):    # type: ignore    due to type of dataloader partially unknown warning
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: object):    # type: ignore    due to type of dataloader partially unknown warning
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_batches = len(dataloader)
@@ -56,6 +58,10 @@ def test(dataloader, model: torch.nn.Module, loss_fn: object):    # type: ignore
             X = X.to(device)
 
             test_loss += loss_fn.loss(model=model, mini_batch=X).detach()
+
+            if args.proof_of_concept:
+                break
+        
     print(f"Test Avg loss: {test_loss.item() / num_batches:>8f} \n")
 
 
@@ -106,8 +112,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}\n-------------------------------")
 
-        train(train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
-        test(test_dataloader, model, loss_fn)
+        train(args, train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
+        test(args, test_dataloader, model, loss_fn)
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 

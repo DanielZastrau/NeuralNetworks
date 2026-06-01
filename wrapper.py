@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'full', 'sampleeval', 'distill'], default='full',
+    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill', 'sample_student', 'eval_student'], default='full',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
     
 
@@ -62,6 +62,12 @@ if __name__ == "__main__":
                         help='specifies the path to the model which is supposed to be distilled. Absolute or relative to the execution location')
 
 
+    # ! student sample / eval arguments
+    parser.add_argument('--student-model', type=str,
+                        help='path to student model, relative or absolute, needed if "what" is set to "sample_student" or "eval_student"\
+                            if not set defaults to later determined student model path')
+
+
     # ! configuration arguments
     parser.add_argument('--lr', type=float, default=2e-4,
                         help='specifies the learning rate of the training process')
@@ -87,6 +93,11 @@ if __name__ == "__main__":
     parser.add_argument('--data-dir', type=str,
                         help='the local directory of the node the job runs on in the cluster')
 
+
+    # ! Dev
+    parser.add_argument('--proof-of-concept', action='store_true',
+                        help='exists so that I can cut training to exactly one iteration, in case I just want to see the full framework run start to end without apparent errors')
+
     args = parser.parse_args()
 
 
@@ -96,10 +107,15 @@ if __name__ == "__main__":
 
     if args.distill_teacher_sampler is None:
         if args.which == 'diffusion':
-            args.distill_teacher_sampler = args.sampler_diff
+            args.distill_teacher_sampler = 'sde'
 
         else:
             args.distill_teacher_sampler = 'rk2'
+
+
+    if args.sampler_mode == '8x8':
+        args.num_samples = 64
+
 
     print(f'\nData directory:  {args.data_dir}\n')
 
@@ -118,11 +134,14 @@ if __name__ == "__main__":
     path_to_model = f"{args.where}_{args.which}_epochs{args.epochs}_model.pth"
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}"
+
+    if args.what != 'full' and args.what != 'train':    # then a path to a model has to be given through the arguments
+        path_to_model = args.model
     print(f'\nDetermined model path:  {path_to_model}\n')
 
 
     # Set up the student model path
-    path_to_distilled_student = f"{args.where}_{args.which}_{args.epochs}_model_student.pth"
+    path_to_distilled_student = f"{args.where}_{args.which}_epochs{args.epochs}_model_student.pth"
     if args.where == 'cluster':
         path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}"
     print(f'\nDetermined student model path:  {path_to_distilled_student}\n')
@@ -140,21 +159,31 @@ if __name__ == "__main__":
         base_name = f"{base_name}_sampler{args.sampler_kac}"
         if args.sampler_kac in ['ee', 'rk2']:    # then fixed step size
             base_name = f'{base_name}_steps{args.num_steps}'
+        else:
+            base_name = f'{base_name}_rk45'
+
+    student_base_name = f'{base_name}_student'
 
     # Mode specific path extension
     if args.sampler_mode == '8x8':
         base_name = f'{base_name}_8x8.png'
+        student_base_name = f'{student_base_name}_8x8.png'
     else:    # args.sampler_mode == 'set'
         base_name = f'{base_name}_set'
+        student_base_name = f'{student_base_name}_set'
         
     # Location specific path start
     save_path = f"./{base_name}"
+    student_save_path = f'./{student_base_name}'
     if args.where == 'cluster':
         if args.sampler_mode == '8x8':
             save_path = f"/homes/math/zastrau/NeuralNetworkSamples/{base_name}"
+            student_save_path = f'/homes/math/zastrau/NeuralNetworkSamples/{student_base_name}'
         else:    # args.sampler_mode == 'set'
             save_path = f"/work/zastrau/samples/{base_name}"
-    print(f'\nDetermined image path: {save_path}\n')
+            student_save_path = f'/work/zastrau/samples/{student_base_name}'
+    print(f'\nDetermined teacher image path: {save_path}\n')
+    print(f'\nDetermined student image path: {student_save_path}\n')
 
 
     # Set up model based on location
@@ -172,6 +201,28 @@ if __name__ == "__main__":
     if args.what in ['eval', 'sample']:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
     print(f'\nInstantiated the {size} model\n')
+
+
+    # If student in args.what, that means, that no teacher is trained and no student is distilled thus we need to initialize from a saved model
+    if 'student' in args.what:
+        if args.student_model is None:
+            path = path_to_distilled_student
+        else:
+            path = args.student_model
+
+        if args.where == 'cluster':
+            from Cluster.utils.modelGetter import model_getter
+            model = model_getter(args=args).to(device)
+
+            size = 'large'
+        else:    # args.where == 'local'
+            from Cluster.networks.neuralNetworkSmall import ConditionalUNet
+            model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+
+            size = 'small'
+
+        model.load_state_dict(torch.load(path, map_location=device))
+        print(f'\nInstantiated the {size} model\n')
 
 
     # compile the model to fuse and optimize the UNet graph for the GPU
@@ -206,7 +257,7 @@ if __name__ == "__main__":
 
 
     # Sample from the model
-    if args.what in ['full', 'sample', 'sampleeval']:
+    if args.what in ['full', 'sample']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
 
@@ -216,7 +267,7 @@ if __name__ == "__main__":
 
 
     # Evaluate the model using FID
-    if args.what in ['full', 'eval', 'sampleeval']:
+    if args.what in ['full', 'eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_model}\n')
 
@@ -226,8 +277,27 @@ if __name__ == "__main__":
 
     if args.what in ['full', 'distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the {args.num_steps}step teacher model {path_to_model} into a {args.num_student_steps}step student')
+        print(f'\nDistilling the teacher model {path_to_model} into a {args.num_student_steps}step student')
 
-        # TODO Need to also implement distillation for all other processes, MMD and Schrödinger and Kac
+        # TODO Need to also implement distillation for all other processes, MMD and Schrödinger
         from Cluster.distillation import distillation_wrapper
-        distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model)
+        student_model = distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model, reversal_fns=reversal_fns)
+
+
+    if args.what in ['full', 'sample_student']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nStarting the sampling for the {args.which} student with ee\n')
+
+        from Cluster.sampling import sample_wrapper
+        args.num_steps = args.num_student_steps
+
+        sample_wrapper(args=args, model=student_model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=student_save_path, mode='student')
+
+
+    # Evaluate the model using FID
+    if args.what in ['full', 'eval_student']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nEvaluating the model {path_to_distilled_student}\n')
+
+        from Cluster.eval import eval_wrapper
+        eval_wrapper(args=args, data=data, img_path=student_save_path)
