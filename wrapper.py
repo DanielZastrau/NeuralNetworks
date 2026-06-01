@@ -127,6 +127,7 @@ if __name__ == "__main__":
     # Determine device and set up model and loss function accordingly
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.set_float32_matmul_precision('high')
     print(f'\nDetermined device:  {device}\n')
 
 

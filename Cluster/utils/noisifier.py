@@ -43,7 +43,7 @@ class Noisify():
 
         # 2. Determine max jumps needed (Mean + 5 Standard Deviations buffer)
         t_max = torch.max(t_noise)
-        max_events = int((self.args.c * t_max) + 5 * np.sqrt(self.args.c * t_max) + 10)
+        max_events = int((self.args.c * t_max) + 5 * torch.sqrt(self.args.c * t_max) + 10)
 
         # 3. Generate inter-arrival times for all dimensions simultaneously
         # Shape: [max_events, *shape]
