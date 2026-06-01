@@ -12,6 +12,12 @@ class LossFns():
         self.args = args
         self.sampler = sampler
 
+        if args.which == 'diffusion':
+            self.loss = self.diffusion
+
+        else:    # args.which == 'kac'
+            self.loss = self.kac
+
 
     def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.diffusion import b
