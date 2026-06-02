@@ -179,7 +179,10 @@ class Reversal():
                 # Get continuous coefficients
                 f_t_x = f(t_curr, x_curr)
                 g_t = g(t_curr).view(-1, 1, 1, 1)
+
+                print(f'DEBUGGING t_curr min max  {t_curr.min()}  -  {t_curr.max()}')
                 b_t = b(t_curr).view(-1, 1, 1, 1)
+                print(f'DEBUGGING b_t mean  {b_t.mean()}')
 
                 # Predict score using continuous time
                 pred_noise = model(x_curr, t_curr)
