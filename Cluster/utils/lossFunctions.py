@@ -39,7 +39,7 @@ class LossFns():
         b_t = b_t.view(-1, 1, 1, 1)  # Reshape b_t to (batch_size, 1, 1, 1) for broadcasting
 
         # compute x
-        x = b_t * x_0 + torch.sqrt(1 - b_t**2) * noise
+        x_corrupted = b_t * x_0 + torch.sqrt(1 - b_t**2) * noise
 
         # simplyfiy the target
         # target = - noise / torch.sqrt(1 - b_t**2)
@@ -48,7 +48,7 @@ class LossFns():
         target = noise
 
         # evaluate the neural network score prediction
-        pred = model(x, t)
+        pred = model(x_corrupted, t)
 
         # compute empirical loss
         loss = torch.nn.functional.mse_loss(pred, target)
@@ -57,7 +57,7 @@ class LossFns():
     
     def kac(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.velo_utils import compute_velocity
-        from Cluster.utils.kac import f, df, g, dg
+        from Cluster.utils.kac import Kac
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -70,20 +70,20 @@ class LossFns():
         t = torch.rand(B, 1, device=device) * self.args.T
 
         # --- Use g(t) for noise process time ---
-        t_for_noise_proc = g(t.squeeze(1), self.args.T)
+        t_for_noise_proc = Kac.g(t.squeeze(1), self.args.T, self.args.g)
         
         # Sample noise using g(t)
         tau: torch.Tensor = self.sampler.sample(t_for_noise_proc, dim=3 * 32 * 32).to(device)
         
         # Use original t for signal schedule f(t)
-        f_t: torch.Tensor = f(t.squeeze(1), self.args.T).unsqueeze(1)
+        f_t: torch.Tensor = Kac.f(t.squeeze(1), self.args.T, self.args.f).unsqueeze(1)
 
         x_t = f_t * x_0 + tau
-        drift = df(t.squeeze(1), self.args.T).unsqueeze(1) * x_0
+        drift = Kac.df(t.squeeze(1), self.args.T, self.args.f).unsqueeze(1) * x_0
 
         with torch.no_grad():
             # Compute velocity using g(t)
-            velo = dg(t, self.args.T) * \
+            velo = Kac.dg(t, self.args.T, self.args.g) * \
                 compute_velocity((x_t - f_t * x_0), t_for_noise_proc.unsqueeze(1), a = self.args.a, c = self.args.c, epsilon=1e-4, T = self.args.T)
 
         # Model is conditioned on original time t
@@ -91,3 +91,29 @@ class LossFns():
         loss = torch.nn.functional.mse_loss(pred, velo + drift)
 
         return loss
+    
+
+    def mmd(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
+
+        from Cluster.utils.mmd import MMD
+
+        x0 = mini_batch
+
+        # sample randomly uniformly from [0, 1]
+        # TODO add normalization for larger interval like for the other processes
+        t = torch.rand_like(x0, device=x0.device)
+
+        # data schedule
+        f_t = MMD.f(t=t)
+        df_t = MMD.df(t=t)
+
+        # noise schedule
+        g_t = MMD.g(t=t)
+        dg_t = MMD.dg(t=t)
+
+        # compute x corrupted
+        # TODO for this we need noise sampled at time gt
+        x_corrupted = f_t * x0 + 
+
+        # compute the target
+        target = df_t * x0 + dg_t * (x-f_t/)

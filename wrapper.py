@@ -88,7 +88,12 @@ if __name__ == "__main__":
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--T', type=float, default=1.0,
                         help='specifies the time horizon T of the kac process')
-    
+    parser.add_argument('--f', type=str, default='opt1', choices=['opt1'],
+                        help='lets you choose different data schedules, opt1 is "1-t"')
+    parser.add_argument('--g', type=str, default='opt1', choices=['opt1', 'opt2'],
+                        help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
+
+
     # cluster
     parser.add_argument('--data-dir', type=str,
                         help='the local directory of the node the job runs on in the cluster')

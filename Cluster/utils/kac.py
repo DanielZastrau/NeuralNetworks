@@ -1,37 +1,30 @@
 import torch
 
-def f(t: torch.Tensor, T: float = 1, name: str = 'linear') -> torch.Tensor:
-    if name == 'linear':
+class Kac:
+
+    @staticmethod
+    def f(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+        # if name == 'opt1':
         return 1 - t / T
-    elif name == 'exp':
-        return torch.exp(-t)
-    else:
-        raise ValueError(f"Unknown schedule: {name}")
 
-def df(t: torch.Tensor, T: float = 1, name: str = 'linear') -> torch.Tensor:
-    if name == 'linear':
+    @staticmethod
+    def df(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+        # if name == 'opt1':
         return -1.0 / T * torch.ones_like(t)
-    elif name == 'exp':
-        return -torch.exp(-t)
-    else:
-        raise ValueError(f"Unknown schedule: {name}")
 
-def g(t: torch.Tensor, T: float = 1, name: str = 't2') -> torch.Tensor:
-    """Computes the time reparameterization g(t) for the noise process."""
-    if name == 't':
-        return t
-    elif name == 't2':
-        # Normalized such that g(T) = T
-        return T * (t / T)**2
-    else:
-        raise ValueError(f"Unknown g schedule: {name}")
+    @staticmethod
+    def g(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+        """Computes the time reparameterization g(t) for the noise process."""
+        if name == 'opt1':
+            return t
+        else:    # name == 'opt2':
+            # Normalized such that g(T) = T
+            return T * (t / T)**2
 
-def dg(t: torch.Tensor, T: float = 1, name: str = 't2') -> torch.Tensor:
-    """Computes the time reparameterization g(t) for the noise process."""
-    if name == 't':
-        return 1
-    elif name == 't2':
-        # Normalized such that g(T) = T
-        return 2*t/T
-    else:
-        raise ValueError(f"Unknown g schedule: {name}")
+    @staticmethod
+    def dg(t: torch.Tensor, T: float, name: str) -> torch.Tensor:
+        """Computes the time reparameterization g(t) for the noise process."""
+        if name == 'opt1':
+            return torch.ones_like(t, device=t.device)
+        else:    # name == 'opt2':
+            return 2*t/T
