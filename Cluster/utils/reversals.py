@@ -186,11 +186,18 @@ class Reversal():
 
                 # Predict score using continuous time
                 pred_noise = model(x_curr, t_curr)
+                print(f'DEBUGGING pred noise mean  {pred_noise.mean()}')
+
                 pred_score = - pred_noise / torch.sqrt(1 - b_t**2)
+                print(f'DEBUGGING pred score mean  {pred_score.mean()}')
 
                 # Scale updates explicitly by dt and sqrt(dt)
                 drift_update = f_t_x * dt_sub.view(-1, 1, 1, 1)
+                print(f'DEBUGGING drift update mean  {drift_update.mean()}')
+                
                 score_update = (g_t ** 2) * pred_score * dt_sub.view(-1, 1, 1, 1)
+                print(f'DEBUGGING score update mean  {score_update.mean()}')
+
                 if noise_injection_bool:
                     noise_injection = g_t * torch.sqrt(dt_sub).view(-1, 1, 1, 1) * torch.randn_like(x_curr)
                 else:
