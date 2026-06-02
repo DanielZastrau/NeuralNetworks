@@ -197,6 +197,8 @@ class Reversal():
                 x_curr = x_curr - drift_update + score_update + noise_injection
                 t_curr -= dt_sub
 
+                print(f'DEBUGGING x_curr mean in teacher integrate loop:  {x_curr.mean()}')
+
         return x_curr
     
 

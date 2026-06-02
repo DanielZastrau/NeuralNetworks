@@ -34,7 +34,7 @@ class Noisify():
             
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         shape = x0.shape
-
+        
         # time parameterization for the noise
         t_noise: torch.Tensor = g(t)
 
