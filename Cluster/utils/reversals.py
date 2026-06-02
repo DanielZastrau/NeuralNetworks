@@ -179,29 +179,20 @@ class Reversal():
                 # Get continuous coefficients
                 f_t_x = f(t_curr, x_curr)
                 g_t = g(t_curr).view(-1, 1, 1, 1)
-
-                print(f'DEBUGGING t_curr min max  {t_curr.min()}  -  {t_curr.max()}')
                 b_t = b(t_curr).view(-1, 1, 1, 1)
-                print(f'DEBUGGING b_t mean  {b_t.mean()}')
 
                 # Predict score using continuous time
                 pred_noise = model(x_curr, t_curr)
-                print(f'DEBUGGING pred noise mean  {pred_noise.mean()}')
 
                 # Need to clamp the variance to prevent a division by zero which will throw NaNs in pytorch
                 # Because otherwise for small values of t the difference between 1 and b_t falls below the
                 # machine epsilon and is thus evaluated as 0
                 variance = torch.clamp(1 - b_t**2, min=1e-8)
                 pred_score = - pred_noise / torch.sqrt(variance)
-                print(f'DEBUGGING pred score mean  {pred_score.mean()}')
 
                 # Scale updates explicitly by dt and sqrt(dt)
                 drift_update = f_t_x * dt_sub.view(-1, 1, 1, 1)
-                print(f'DEBUGGING drift update mean  {drift_update.mean()}')
-                
                 score_update = (g_t ** 2) * pred_score * dt_sub.view(-1, 1, 1, 1)
-                print(f'DEBUGGING score update mean  {score_update.mean()}')
-
                 if noise_injection_bool:
                     noise_injection = g_t * torch.sqrt(dt_sub).view(-1, 1, 1, 1) * torch.randn_like(x_curr)
                 else:
@@ -210,8 +201,6 @@ class Reversal():
                 # Continuous SDE reverse step formula
                 x_curr = x_curr - drift_update + score_update + noise_injection
                 t_curr -= dt_sub
-
-                print(f'DEBUGGING x_curr mean in teacher integrate loop:  {x_curr.mean()}')
 
         return x_curr
     
