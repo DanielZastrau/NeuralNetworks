@@ -30,13 +30,13 @@ class Noisify():
     def kac(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # * Mean-Reverting Forward Process see 'Duong Chemseddine 2025 - Telegraphers Generative Model via Damped Wave Equations'
         
-        from Cluster.utils.kac import f, g
+        from Cluster.utils.kac import Kac
             
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         shape = x0.shape
         
         # time parameterization for the noise
-        t_noise: torch.Tensor = g(t)
+        t_noise: torch.Tensor = Kac.g(t, self.args.T, self.args.g)
 
         # Broadcast 1D t (e.g., batch_size) to target shape (e.g., [batch_size, C, H, W])
         t_broadcast = t_noise.view(-1, 1, 1, 1)
@@ -75,5 +75,5 @@ class Noisify():
         noise = initial_directions * self.args.c * integral
         
         # Calculate the mean reverting kac process starting in x0
-        f_t = f(t).view(-1, 1, 1, 1)
+        f_t = Kac.f(t, self.args.T, self.args.f).view(-1, 1, 1, 1)
         return f_t * x0 + noise
