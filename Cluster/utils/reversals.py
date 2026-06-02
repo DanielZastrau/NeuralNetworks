@@ -188,7 +188,11 @@ class Reversal():
                 pred_noise = model(x_curr, t_curr)
                 print(f'DEBUGGING pred noise mean  {pred_noise.mean()}')
 
-                pred_score = - pred_noise / torch.sqrt(1 - b_t**2)
+                # Need to clamp the variance to prevent a division by zero which will throw NaNs in pytorch
+                # Because otherwise for small values of t the difference between 1 and b_t falls below the
+                # machine epsilon and is thus evaluated as 0
+                variance = torch.clamp(1 - b_t**2, min=1e-8)
+                pred_score = - pred_noise / torch.sqrt(variance)
                 print(f'DEBUGGING pred score mean  {pred_score.mean()}')
 
                 # Scale updates explicitly by dt and sqrt(dt)
