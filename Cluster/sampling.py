@@ -70,71 +70,11 @@ def sample_diff(args: argparse.Namespace, model: torch.nn.Module, data: DataProv
 
 
 @torch.inference_mode()
-def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
+def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
-                    sampler: TorchKacConstantSampler, mode: str = 'teacher') -> torch.Tensor:
-    print(f"Sampling {args.num_samples} images using {args.sampler_kac} sampling...")
+                    sampler: TorchKacConstantSampler | None, mode: str = 'teacher') -> torch.Tensor:
 
-    batch_size = args.sampling_batch_size
-    device = next(model.parameters()).device
-
-    all_samples = []
-
-    for i in range(0, args.num_samples, batch_size):
-        curr_batch_size = min(batch_size, args.num_samples - i)
-        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
-
-        # Initiate Kac noise
-        x_batch = sampler.sample(torch.ones(curr_batch_size, 1, device=device) * args.T, dim=data.data_dims.total_dimension).to(device)
-        x_batch = x_batch.view(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
-
-        if args.sampler_kac == 'rk45' and mode == 'teacher':
-            x_batch = reversal_fns.rk45_wrapper(
-                model=model, 
-                data=data, 
-                x_batch=x_batch, 
-                t_start=args.T,
-                t_end=0
-            )
-
-        else:    # args.sampler_kac in ['ee', 'rk2'] or mode == 'student'
-            # ! Kac has finite dynamics therefore we can integrate all the way to 0
-            if args.sampler_kac == 'ee' or mode == 'student':
-                reversal_fn = reversal_fns.explicit_euler
-            else:    # args.sampler_kac == 'rk2'
-                reversal_fn = reversal_fns.rk2
-
-            # Properly scale continuous time from T down to epsilon
-            time_steps = torch.linspace(args.T, 0, args.num_steps, device=device)
-            dt = args.T / args.num_steps
-
-            for step_idx, t_val in enumerate(time_steps):
-                
-                if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-                    print(f"Step {step_idx}/{args.num_steps}")
-
-                # Broadcast the continuous time value to the batch size
-                t = torch.ones(curr_batch_size, device=device) * t_val
-                
-                x_batch = reversal_fn(
-                    model=model,
-                    x_batch=x_batch,
-                    t_start=t,
-                    dt=dt,
-                    num_substeps=1
-                )
-            
-        all_samples.append(x_batch)
-
-    return torch.cat(all_samples, dim=0)
-
-
-@torch.inference_mode()
-def sample_mmd(args: argparse.Namespace, model: torch.nn.Module,
-                    data: DataProvider, reversal_fns: Reversal, mode: str = 'teacher') -> torch.Tensor:
-    from Cluster.utils.mmd import MMD
-
-    print(f"Sampling {args.num_samples} images using {args.sampler_mmd} sampling...")
+    print(f"Sampling {args.num_samples} images for {args.which}  using {args.sampler} sampling...")
 
     batch_size = args.sampling_batch_size
     device = next(model.parameters()).device
@@ -146,18 +86,28 @@ def sample_mmd(args: argparse.Namespace, model: torch.nn.Module,
         print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
 
         # Initialize with random noise
-        _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size) * args.T,
-                                x=torch.ones(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height),
-                                b=args.mmd_b)
+        if args.which == 'mmd':
+            from Cluster.utils.mmd import MMD
+            _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size) * args.T,
+                                    x=torch.ones(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height),
+                                    b=args.mmd_b)
+
+        else:    # args.which == 'kac':
+            # Initiate Kac noise
+            assert isinstance(sampler, TorchKacConstantSampler)
+            x_batch = sampler.sample(torch.ones(curr_batch_size, 1, device=device) * args.T, dim=data.data_dims.total_dimension).to(device)
+            x_batch = x_batch.view(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
 
 
-        if args.sampler_mmd == 'ee':
+        if args.sampler == 'ee':
             reversal_fn = reversal_fns.explicit_euler
         else:    # args.sampler_kac == 'rk2':
             reversal_fn = reversal_fns.rk2
+        # TODO: sampler rk45, AB2
 
         # Properly scale continuous time from T down to epsilon
-        # ! As was the case with diffusion, the velocity field has a singularity in t=0, thus employ time truncation to make sampling more stable
+        # ! Diffusion and MMD sample until 1e-5 due to their singularity,
+        # ! Kac samples until 0
         time_steps = torch.linspace(args.T, args.time_truncation, args.num_steps, device=device)
         dt = args.T / args.num_steps
 
@@ -190,12 +140,9 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
 
     if args.which == 'diffusion':
         samples = sample_diff(args=args, model=model, data=data, reversal_fns=reversal_fns, mode=mode)
-    elif args.which == 'kac':
+    else:    # args.which == 'kac' or args.which == 'mmd':
         # Assert that a properly inititialized sampler has been passed
-        assert isinstance(sampler, TorchKacConstantSampler)
-        samples = sample_kac(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler, mode=mode)
-    else:    # args.which == 'mmd':
-        samples = sample_mmd(args=args, model=model, data=data, reversal_fns=reversal_fns, mode=mode)
+        samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
 
     print(f"Generated samples shape: {samples.shape}")  # Should be (64, 3, 32, 32)
 

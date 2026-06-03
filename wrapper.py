@@ -24,6 +24,8 @@ if __name__ == "__main__":
 
     # ! sampling arguments
     # TODO at some point only do one sampler argument and handle the correctness in your argument dependency checker
+    parser.add_argument('--sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
+                        help='chose a method to sample with, em is only available for diffusion models.')
     parser.add_argument('--sampler-diff', type=str, choices=['sde', 'pfode'], default='sde',
                         help='only required if the "which" flag is set to "diffusion" defaults to euler-maruyama scheme of the reverse time SDE')
     parser.add_argument('--sampler-kac', type=str, choices=['ee', 'rk2', 'rk45'], default='ee',
@@ -51,8 +53,8 @@ if __name__ == "__main__":
 
 
     # ! distillation arguments
-    parser.add_argument('--distill-teacher-sampler', type=str,
-                        help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to args.sampler-xyz')
+    parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'],
+                        help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to ee')
     parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'],
                         help='provides the possibility to set a different student sampler than ee, if not set defaults to explicit euler')
     parser.add_argument('--iterations', type=int, default=100,
@@ -121,17 +123,12 @@ if __name__ == "__main__":
     from Cluster.argumentDependencyChecker import assert_dependencies
     assert_dependencies(args=args)
 
-    if args.distill_teacher_sampler is None:
-        if args.which == 'diffusion':
-            args.distill_teacher_sampler = 'sde'
-
-        else:
-            args.distill_teacher_sampler = 'rk2'
-
 
     if args.sampler_mode == '8x8':
         args.num_samples = 64
 
+    if args.which == 'kac':
+        args.time_truncation = 0
 
     print(f'\nData directory:  {args.data_dir}\n')
 

@@ -7,3 +7,9 @@ def assert_dependencies(args: argparse.Namespace):
 
     if args.what != 'full' and args.what != 'train':
         assert args.model is not None, 'If no teacher is trained beforehand the path to a trained model has to be given'
+
+    if args.sampler == 'em':
+        assert args.which == 'diffusion', 'euler maruyama is only allowed for diffuision models'
+
+    if args.distill_teacher_sampler == 'em':
+        assert args.which == 'diffusion'
