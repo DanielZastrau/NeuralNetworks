@@ -120,7 +120,7 @@ class LossFns():
         dg_t = MMD.dg(t=t).view(-1, 1, 1, 1)
 
         # noise at gt
-        pre_noise, _ = MMD.get_noise(t=g_t, x=x0, b=self.args.mmd_b)
+        pre_noise, noise = MMD.get_noise(t=g_t, x=x0, b=self.args.mmd_b)
 
         # use that to corrupt the original sample fully, according to the mean reverting process
         x_corrupted = f_t * x0 + noise

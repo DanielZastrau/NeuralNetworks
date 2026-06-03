@@ -46,6 +46,7 @@ def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn:
 
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
+
 def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -62,7 +63,10 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
             if args.proof_of_concept:
                 break
         
-    print(f"Test Avg loss: {test_loss.item() / num_batches:>8f} \n")
+    avg_test_loss = test_loss.item() / num_batches
+    print(f"Test Avg loss: {avg_test_loss:>8f} \n")
+    
+    return avg_test_loss
 
 
 def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider, save_path: str):
@@ -108,17 +112,46 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     print('\nInitialize the amp grad scaler')
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
+    patience = max(1, epochs // 100 * 10)  # Ensure patience is at least 1
+    best_test_loss = float('inf')
+    epochs_no_improve = 0
+    best_model_state = None
+
     # train the model
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}\n-------------------------------")
 
         train(args, train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
-        test(args, test_dataloader, model, loss_fn)
+        current_test_loss = test(args, test_dataloader, model, loss_fn)
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 
+
+        # Early Stopping Logic --------------------------------------------------------------------
+        if current_test_loss < best_test_loss:
+            best_test_loss = current_test_loss
+            epochs_no_improve = 0
+            
+            # Store the best uncompiled model state
+            uncompiled_model = getattr(model, "_orig_mod", model)
+            best_model_state = copy.deepcopy(uncompiled_model.state_dict())
+        else:
+            epochs_no_improve += 1
+            print(f"Early stopping counter: {epochs_no_improve} out of {patience}")
+            
+            if epochs_no_improve >= patience:
+                print(f"Early stopping triggered. No improvement for {patience} consecutive epochs.")
+                break
+
     print("Done!")
 
-    uncompiled_model = getattr(model, "_orig_mod", model)
-    torch.save(uncompiled_model.state_dict(), save_path)
-    print('Saving the model')
+
+    # Save the model state that achieved the lowest test loss
+    if best_model_state is not None:
+        torch.save(best_model_state, save_path)
+        print('Saving the best model')
+    else:
+        # Fallback if no evaluation ever succeeded (edge cases)
+        uncompiled_model = getattr(model, "_orig_mod", model)
+        torch.save(uncompiled_model.state_dict(), save_path)
+        print('Saving the model')
