@@ -23,11 +23,11 @@ class Reversal():
             else:    
                 # pfODE relies on adaptive scipy solvers not suited for fixed-step distillation
                 raise NotImplementedError("Distillation requires explicit fixed-step solvers. Your current config wants to use rk45 with the pfODE for diffusion")
-        elif args.which == 'kac':
+        elif args.which == 'kac' or args.which == 'mmd':
             if args.distill_teacher_sampler == 'ee':
-                self.teacher_integrate = self.kac_explicit_euler
+                self.teacher_integrate = self.explicit_euler
             elif args.distill_teacher_sampler == 'rk2':
-                self.teacher_integrate = self.kac_rk2
+                self.teacher_integrate = self.rk2
             else:
                 raise NotImplementedError("Use 'ee' or 'rk2' for Kac distillation.")
 
@@ -97,17 +97,17 @@ class Reversal():
 
     
     # =============================================================================================
-    # kac explicit solver implementations
+    # explicit solver implementations
 
 
     # ! Self implement these methods to avoid memory overhead of torchdiffeq and to stay on the gpu,
-    # ! since (while scipy is less memory intensive) it is cpu native and therefore lacks the performance
+    # ! since scipy (while it is less memory intensive) is cpu native and therefore lacks the performance
     # ! enhancements of the gpu arch
 
-    def kac_explicit_euler(self, model: torch.nn.Module, x_batch: torch.Tensor, 
+    def explicit_euler(self, model: torch.nn.Module, x_batch: torch.Tensor, 
                            t_start: torch.Tensor, dt: float, num_substeps: int) -> torch.Tensor:
-        """Explicit Euler stepping for Kac models over [t, t - dt] in
-        num_substeps many steps."""
+        """Explicit Euler stepping for Kac / MMD models over [t, t - dt] in
+        num_substeps many steps. This assumes that the model outputs the velocity field"""
         dt_sub = dt / num_substeps
         x_curr = x_batch.clone()
         t_curr = t_start.clone()
@@ -120,10 +120,10 @@ class Reversal():
                 
         return x_curr
 
-    def kac_rk2(self, model: torch.nn.Module, x_batch: torch.Tensor, 
+    def rk2(self, model: torch.nn.Module, x_batch: torch.Tensor, 
                 t_start: torch.Tensor, dt: float, num_substeps: int) -> torch.Tensor:
-        """RK2 (Midpoint) stepping for Kac models over [t, t - dt] in
-        num_substeps many steps."""
+        """RK2 (Midpoint) stepping for Kac / MMD models over [t, t - dt] in
+        num_substeps many steps. This assumes that the model outputs the velocity field."""
         dt_sub = dt / num_substeps
         x_curr = x_batch.clone()
         t_curr = t_start.clone()

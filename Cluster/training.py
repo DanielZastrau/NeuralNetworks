@@ -46,7 +46,7 @@ def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn:
 
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
-def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: object):    # type: ignore    due to type of dataloader partially unknown warning
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     num_batches = len(dataloader)
@@ -65,7 +65,7 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
     print(f"Test Avg loss: {test_loss.item() / num_batches:>8f} \n")
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: object, model: torch.nn.Module, data: DataProvider, save_path: str):
+def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider, save_path: str):
 
     train_dataloader, test_dataloader = data.get_datasets_for_training()
 

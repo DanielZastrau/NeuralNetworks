@@ -72,7 +72,7 @@ def sample_diff(args: argparse.Namespace, model: torch.nn.Module, data: DataProv
 @torch.inference_mode()
 def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
-                    sampler: TorchKacConstantSampler, mode: str = 'teacher'):
+                    sampler: TorchKacConstantSampler, mode: str = 'teacher') -> torch.Tensor:
     print(f"Sampling {args.num_samples} images using {args.sampler_kac} sampling...")
 
     batch_size = args.sampling_batch_size
@@ -99,9 +99,9 @@ def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
         else:    # args.sampler_kac in ['ee', 'rk2'] or mode == 'student'
             # ! Kac has finite dynamics therefore we can integrate all the way to 0
             if args.sampler_kac == 'ee' or mode == 'student':
-                reversal_fn = reversal_fns.kac_explicit_euler
+                reversal_fn = reversal_fns.explicit_euler
             else:    # args.sampler_kac == 'rk2'
-                reversal_fn = reversal_fns.kac_rk2
+                reversal_fn = reversal_fns.rk2
 
             # Properly scale continuous time from T down to epsilon
             time_steps = torch.linspace(args.T, 0, args.num_steps, device=device)
@@ -112,8 +112,8 @@ def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
                 if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
                     print(f"Step {step_idx}/{args.num_steps}")
 
-                # Broadczast the continuous time value to the batch size
-                t = torch.ones(args.num_samples, device=device) * t_val
+                # Broadcast the continuous time value to the batch size
+                t = torch.ones(curr_batch_size, device=device) * t_val
                 
                 x_batch = reversal_fn(
                     model=model,
@@ -128,6 +128,57 @@ def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
     return torch.cat(all_samples, dim=0)
 
 
+@torch.inference_mode()
+def sample_mmd(args: argparse.Namespace, model: torch.nn.Module,
+                    data: DataProvider, reversal_fns: Reversal, mode: str = 'teacher') -> torch.Tensor:
+    from Cluster.utils.mmd import MMD
+
+    print(f"Sampling {args.num_samples} images using {args.sampler_mmd} sampling...")
+
+    batch_size = args.sampling_batch_size
+    device = next(model.parameters()).device
+
+    all_samples = []
+
+    for i in range(0, args.num_samples, batch_size):
+        curr_batch_size = min(batch_size, args.num_samples - i)
+
+        # Initialize with random noise
+        _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size) * args.T,
+                                x=torch.ones(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height),
+                                b=args.mmd_b)
+
+
+        if args.sampler_mmd == 'ee':
+            reversal_fn = reversal_fns.explicit_euler
+        else:    # args.sampler_kac == 'rk2':
+            reversal_fn = reversal_fns.rk2
+
+        # Properly scale continuous time from T down to epsilon
+        # ! MMD has finite dynamics therefore we can integrate all the way to 0
+        time_steps = torch.linspace(args.T, 0, args.num_steps, device=device)
+        dt = args.T / args.num_steps
+
+        for step_idx, t_val in enumerate(time_steps):
+            
+            if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
+                print(f"Step {step_idx}/{args.num_steps}")
+
+            # Broadcast the continuous time value to the batch size
+            t = torch.ones(curr_batch_size, device=device) * t_val
+            
+            x_batch = reversal_fn(
+                model=model,
+                x_batch=x_batch,
+                t_start=t,
+                dt=dt,
+                num_substeps=1
+            )
+        
+        all_samples.append(x_batch)
+
+    return torch.cat(all_samples, dim=0)
+
 
 def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider, sampler: TorchKacConstantSampler | None,
                    reversal_fns: Reversal, save_path: str, mode: str = 'teacher'):
@@ -137,11 +188,13 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
 
     if args.which == 'diffusion':
         samples = sample_diff(args=args, model=model, data=data, reversal_fns=reversal_fns, mode=mode)
-    else:    # args.which == 'kac'
-            # Assert that a properly inititialized sampler has been passed
+    elif args.which == 'kac':
+        # Assert that a properly inititialized sampler has been passed
         assert isinstance(sampler, TorchKacConstantSampler)
+        samples = sample_kac(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler, mode=mode)
+    else:    # args.which == 'mmd':
+        samples = sample_mmd(args=args, model=model, data=data, reversal_fns=reversal_fns, mode=mode)
 
-        samples = sample_kac(args=args, model=model, data = data, reversal_fns=reversal_fns, sampler=sampler, mode=mode)
     print(f"Generated samples shape: {samples.shape}")  # Should be (64, 3, 32, 32)
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
