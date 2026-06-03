@@ -1,14 +1,21 @@
+"""
+! Implemented exponential moving average, just be aware, the base logic is that it is the superior model
+"""
+
 import argparse
+import copy
 
 import torch
 from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
+from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.lossFunctions import LossFns
 
-def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns,
-          optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler,
-          scaler: torch.amp.GradScaler):
+def train(args: argparse.Namespace, dataloader,
+          model: torch.nn.Module, ema_model: AveragedModel,
+          loss_fn: LossFns, optimizer: torch.optim.Optimizer,
+          scheduler: torch.optim.lr_scheduler.LRScheduler, scaler: torch.amp.GradScaler):
     
     device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = torch.device(device_type)
@@ -37,6 +44,9 @@ def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn:
         scaler.update()
         scheduler.step()
 
+        # Update EMA model parameters
+        ema_model.update_parameters(model)
+
         # Detach removes the tensor from the computation graph to save memory, 
         # but keeps the value on the GPU, avoiding CPU synchronization.
         train_loss += loss.detach()
@@ -47,9 +57,10 @@ def train(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn:
     print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
 
-def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns,    # type: ignore    due to type of dataloader partially unknown warning
+         prefix: str = ''):
 
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_batches = len(dataloader)
 
     model.eval()
@@ -64,7 +75,7 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
                 break
         
     avg_test_loss = test_loss.item() / num_batches
-    print(f"Test Avg loss: {avg_test_loss:>8f} \n")
+    print(f"{prefix}  Test Avg loss: {avg_test_loss:>8f} \n")
     
     return avg_test_loss
 
@@ -72,21 +83,20 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
 def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider, save_path: str):
 
     train_dataloader, test_dataloader = data.get_datasets_for_training()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     print('\nSetting optimizer and learning rates')
     # Define step counts
     epochs = args.epochs
     batches_per_epoch = len(train_dataloader)    # type: ignore
     total_steps = epochs * batches_per_epoch
-
-    # Dedicate the first 5% of total iterations to warming up
     warmup_steps = int(total_steps * 0.05) 
 
-    # 1. Initialize optimizer with the TARGET scaled learning rate
+    # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
     optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr)
 
-    # 2. Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
+    # Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
     warmup_scheduler = LinearLR(
         optimizer,
         start_factor=1e-8,
@@ -94,14 +104,14 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
         total_iters=warmup_steps
     )
 
-    # 3. Decay: Cosine annealing for the remainder of training
+    # Decay: Cosine annealing for the remainder of training
     cosine_scheduler = CosineAnnealingLR(
         optimizer,
         T_max=(total_steps - warmup_steps),
         eta_min=1e-5
     )
 
-    # 4. Chain the schedulers
+    # Chain the schedulers
     scheduler = SequentialLR(
         optimizer, 
         schedulers=[warmup_scheduler, cosine_scheduler], 
@@ -112,29 +122,50 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     print('\nInitialize the amp grad scaler')
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
-    patience = max(1, epochs // 100 * 10)  # Ensure patience is at least 1
+    # Initialize the EMA Model
+    ema_decay = 0.9999
+    ema_avg_fn = get_ema_multi_avg_fn(ema_decay)
+    ema_model = AveragedModel(model, device=device, multi_avg_fn=ema_avg_fn)
+
+    # Setup the patience early halting
+    patience = max(1, epochs // 100 * 10)
     best_test_loss = float('inf')
     epochs_no_improve = 0
     best_model_state = None
+    best_model_type = "None"
 
     # train the model
     for epoch in range(epochs):
         print(f"Epoch {epoch+1}\n-------------------------------")
 
-        train(args, train_dataloader, model, loss_fn, optimizer, scheduler, scaler)
-        current_test_loss = test(args, test_dataloader, model, loss_fn)
+        train(args, train_dataloader, model, ema_model, loss_fn, optimizer, scheduler, scaler)
+
+
+        # evaluate both the active model and the ema model
+        active_loss = test(args, test_dataloader, model, loss_fn, 'active')
+        ema_loss = test(args, test_dataloader, ema_model, loss_fn, 'ema')
 
         print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
 
 
+        # Gate on the superior configuration for this epoch
+        current_best_loss = min(active_loss, ema_loss)
+
+
         # Early Stopping Logic --------------------------------------------------------------------
-        if current_test_loss < best_test_loss:
-            best_test_loss = current_test_loss
+        if current_best_loss < best_test_loss:
+            best_test_loss = current_best_loss
             epochs_no_improve = 0
             
-            # Store the best uncompiled model state
-            uncompiled_model = getattr(model, "_orig_mod", model)
-            best_model_state = copy.deepcopy(uncompiled_model.state_dict())
+            # Extract and store the state dict of the superior model
+            if active_loss < ema_loss:
+                uncompiled_model = getattr(model, "_orig_mod", model)
+                best_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                best_model_type = "Active"
+            else:
+                uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                best_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                best_model_type = "EMA"
         else:
             epochs_no_improve += 1
             print(f"Early stopping counter: {epochs_no_improve} out of {patience}")
@@ -146,12 +177,10 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     print("Done!")
 
 
-    # Save the model state that achieved the lowest test loss
     if best_model_state is not None:
         torch.save(best_model_state, save_path)
-        print('Saving the best model')
+        print(f'Saving the best model ({best_model_type} weights)')
     else:
-        # Fallback if no evaluation ever succeeded (edge cases)
         uncompiled_model = getattr(model, "_orig_mod", model)
         torch.save(uncompiled_model.state_dict(), save_path)
-        print('Saving the model')
+        print('Saving the active model (fallback)')
