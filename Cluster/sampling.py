@@ -22,7 +22,7 @@ def sample_diff(args: argparse.Namespace, model: torch.nn.Module, data: DataProv
 
     for i in range(0, args.num_samples, batch_size):
         curr_batch_size = min(batch_size, args.num_samples - i)
-        print(f'curr batch size:  {curr_batch_size}')
+        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
 
         # Initialize x with random noise from the prior distribution
         x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
@@ -82,6 +82,7 @@ def sample_kac(args: argparse.Namespace, model: torch.nn.Module,
 
     for i in range(0, args.num_samples, batch_size):
         curr_batch_size = min(batch_size, args.num_samples - i)
+        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
 
         # Initiate Kac noise
         x_batch = sampler.sample(torch.ones(curr_batch_size, 1, device=device) * args.T, dim=data.data_dims.total_dimension).to(device)
@@ -142,6 +143,7 @@ def sample_mmd(args: argparse.Namespace, model: torch.nn.Module,
 
     for i in range(0, args.num_samples, batch_size):
         curr_batch_size = min(batch_size, args.num_samples - i)
+        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
 
         # Initialize with random noise
         _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size) * args.T,
@@ -155,8 +157,8 @@ def sample_mmd(args: argparse.Namespace, model: torch.nn.Module,
             reversal_fn = reversal_fns.rk2
 
         # Properly scale continuous time from T down to epsilon
-        # ! MMD has finite dynamics therefore we can integrate all the way to 0
-        time_steps = torch.linspace(args.T, 0, args.num_steps, device=device)
+        # ! As was the case with diffusion, the velocity field has a singularity in t=0, thus employ time truncation to make sampling more stable
+        time_steps = torch.linspace(args.T, args.time_truncation, args.num_steps, device=device)
         dt = args.T / args.num_steps
 
         for step_idx, t_val in enumerate(time_steps):
