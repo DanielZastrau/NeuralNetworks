@@ -23,10 +23,13 @@ if __name__ == "__main__":
     
 
     # ! sampling arguments
+    # TODO at some point only do one sampler argument and handle the correctness in your argument dependency checker
     parser.add_argument('--sampler-diff', type=str, choices=['sde', 'pfode'], default='sde',
                         help='only required if the "which" flag is set to "diffusion" defaults to euler-maruyama scheme of the reverse time SDE')
-    parser.add_argument('--sampler-kac', type=str, choices=['ee', 'rk2', 'rk45'], default='rk45',
-                        help='only required if the "which" flag is set to "kac" defaults to flowODE with rk45')    # TODO: might delete this since I only want to be using RK45
+    parser.add_argument('--sampler-kac', type=str, choices=['ee', 'rk2', 'rk45'], default='ee',
+                        help='only required if the "which" flag is set to "kac" defaults to flowODE with ee')    # TODO: might delete this since I only want to be using RK45
+    parser.add_argument('--sampler-mmd', type=str, choices=['ee', 'rk2', 'rk45'], default='ee',
+                        help='only required if the "which" flag is set to "mmd" defaults to flowODE with ee')
     parser.add_argument('--sampler-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
@@ -88,11 +91,19 @@ if __name__ == "__main__":
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--T', type=float, default=1.0,
                         help='specifies the time horizon T of the kac process')
-    parser.add_argument('--f', type=str, default='opt1', choices=['opt1'],
+    parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
-    parser.add_argument('--g', type=str, default='opt1', choices=['opt1', 'opt2'],
+    parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
                         help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
 
+
+    # of mmd
+    parser.add_argument('--mmd-b', type=int, default=3,
+                        help='sets the uniform distribution towards which the process moves')
+    parser.add_argument('--mmd-f', type=str, default='opt1',
+                        help='lets you select another data schedule f, doesnt do anything right now, only there as a placeholder for the future')
+    parser.add_argument('--mmd-g', type=str, default='opt1',
+                        help='lets you select another noise schedule f, doesnt do anything right now, only there as a placeholder for the future')
 
     # cluster
     parser.add_argument('--data-dir', type=str,

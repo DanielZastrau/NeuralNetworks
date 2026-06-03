@@ -17,6 +17,9 @@ class Noisify():
         elif self.args.which == 'kac':
             self.noisify = self.kac
 
+        else:    # self.args.which == 'mmd':
+            self.noisify = self.mmd
+
 
     def diffusion(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # * closed form solution to the reverse time SDE formulation of the diffusion process, see e.g. "Song et al 2021 - Score based generative modeling through SDEs"
@@ -36,44 +39,67 @@ class Noisify():
         shape = x0.shape
         
         # time parameterization for the noise
-        t_noise: torch.Tensor = Kac.g(t, self.args.T, self.args.g)
+        t_noise: torch.Tensor = Kac.g(t, self.args.T, self.args.kac_g)
 
         # Broadcast 1D t (e.g., batch_size) to target shape (e.g., [batch_size, C, H, W])
         t_broadcast = t_noise.view(-1, 1, 1, 1)
 
-        # 2. Determine max jumps needed (Mean + 5 Standard Deviations buffer)
+        # Determine max jumps needed (Mean + 5 Standard Deviations buffer)
         t_max = torch.max(t_noise)
         max_events = int((self.args.c * t_max) + 5 * torch.sqrt(self.args.c * t_max) + 10)
 
-        # 3. Generate inter-arrival times for all dimensions simultaneously
+        # Generate inter-arrival times for all dimensions simultaneously
         # Shape: [max_events, *shape]
         inter_arrivals = torch.empty((max_events, *shape), device=device).exponential_(1.0 / self.args.c)
 
-        # 4. Convert to absolute arrival times
+        # Convert to absolute arrival times
         arrival_times = torch.cumsum(inter_arrivals, dim=0)
 
-        # 5. Clamp times to maximum t. 
+        # Clamp times to maximum t. 
         # Any event occurring after t is clamped to t, making its subsequent duration 0.
         clamped_times = torch.clamp(arrival_times, max=t_broadcast)
 
-        # 6. Prepend t=0 to calculate durations
+        # Prepend t=0 to calculate durations
         zeros = torch.zeros((1, *shape), device=device)
         full_times = torch.cat([zeros, clamped_times], dim=0)
 
-        # 7. Calculate time spent in each state (dt)
+        # Calculate time spent in each state (dt)
         durations = full_times[1:] - full_times[:-1]
 
-        # 8. Create alternating signs for the integrand (+1, -1, +1, -1...)
+        # Create alternating signs for the integrand (+1, -1, +1, -1...)
         signs = torch.ones((max_events, *shape), device=device)
         signs[1::2] = -1.0
 
-        # 9. Sample initial random directions D_0 in {-1, 1}
+        # Sample initial random directions D_0 in {-1, 1}
         initial_directions = torch.randint(0, 2, shape, device=device).float() * 2.0 - 1.0
 
-        # 10. Integrate: sum of (duration * sign) * velocity * initial_direction
+        # Integrate: sum of (duration * sign) * velocity * initial_direction
         integral = torch.sum(durations * signs, dim=0)
         noise = initial_directions * self.args.c * integral
         
         # Calculate the mean reverting kac process starting in x0
-        f_t = Kac.f(t, self.args.T, self.args.f).view(-1, 1, 1, 1)
+        f_t = Kac.f(t, self.args.T, self.args.kac_f).view(-1, 1, 1, 1)
+
+        # use that to corrupt the original sample fully
+        return f_t * x0 + noise
+    
+
+    def mmd(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+
+        from Cluster.utils.mmd import MMD
+
+        # sample randomly uniformly from [0, 1]
+        # TODO add normalization for larger interval like for the other processes
+        t = torch.rand(x0.size(0), device=x0.device).view(-1, 1, 1, 1)
+
+        # data schedule
+        f_t = MMD.f(t=t)
+
+        # noise schedule
+        g_t = MMD.g(t=t)
+
+        # noise at gt
+        _, noise = MMD.get_noise(t=g_t, x=x0, b=self.args.mmd_b)
+
+        # use that to corrupt the original sample fully
         return f_t * x0 + noise
