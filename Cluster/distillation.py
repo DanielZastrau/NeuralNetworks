@@ -61,7 +61,9 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
     delta_t = 1 / args.distill_num_student_steps
 
 
-    for iteration in range(args.distill_iterations):
+    for iteration in range(args.iterations):
+        if iteration % 1000 == 0:
+            print(f'Starting iteration  {iteration}')
         optimizer.zero_grad()
 
         # sample a batch from the dataset
@@ -96,7 +98,8 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
 
         # compute the loss and update the weights
         loss = nn.functional.mse_loss(x_target, x_calc)
-        print(f'iteration  {iteration}  --  loss  {loss.item()}---', end='\r')
+        if iteration % 1000 == 0:
+            print(f'---loss  {loss.item()}---\n')
         
         # 4. Optimization step
         loss.backward()
