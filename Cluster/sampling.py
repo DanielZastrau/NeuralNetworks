@@ -42,14 +42,6 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
             x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
 
 
-        if args.sampling_sampler == 'ee':
-            reversal_fn = reversal_fns.explicit_euler
-        elif args.sampling_sampler == 'em':
-            reversal_fn = reversal_fns.euler_maruyama
-        else:    # args.sampling_sampler == 'rk2':
-            reversal_fn = reversal_fns.rk2
-        # TODO: sampler rk45, AB2
-
         # Properly scale continuous time from T down to epsilon
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
@@ -68,7 +60,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
                 # Don't add random noise at the very last step
                 noise_injection_bool = (step_idx != args.sampling_num_steps - 1)
                     
-                x_batch = reversal_fn(
+                x_batch = reversal_fns.integrator(
                     model=model,
                     x_batch=x_batch,
                     t_start=t,
@@ -78,7 +70,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
                 )
 
             else:
-                x_batch = reversal_fn(
+                x_batch = reversal_fns.integrator(
                     model=model,
                     x_batch=x_batch,
                     t_start=t,

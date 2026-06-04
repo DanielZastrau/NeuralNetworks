@@ -10,7 +10,8 @@ from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
 from Cluster.utils.reversals import Reversal
 
-def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal, model_path: str = '') -> torch.nn.Module:
+def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal,
+                         model_path: str = '', noisify_fns: Noisify) -> torch.nn.Module:
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
@@ -46,9 +47,6 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         student = torch.compile(student)
 
 
-    noisifier = Noisify(args=args).noisify
-
-
     optimizer = torch.optim.AdamW(student.parameters(), lr=2e-4)
 
     if args.which == 'diffusion':
@@ -74,7 +72,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
 
         # noisify x_batch according to t_batch
         # TODO still misses Schrödinger
-        x_batch_corrupted = noisifier(x0=x_batch, t=t_batch)
+        x_batch_corrupted = noisify_fns.noisify(x0=x_batch, t=t_batch)
 
         # integrate backwards in time using the teacher method and N uniform substeps
         # TODO still misses Schrödinger

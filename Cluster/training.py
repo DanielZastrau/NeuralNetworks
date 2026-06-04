@@ -6,12 +6,15 @@ import tempfile
 import torch
 from torch.optim.lr_scheduler import LinearLR, ConstantLR, SequentialLR
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+from torchvision.utils import save_image
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.lossFunctions import LossFns
 from Cluster.utils.stages import Stages
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.reversals import Reversal
+from Cluster.sampling import sample
+from Cluster.eval import evaluate_fid
 
 def train(args: argparse.Namespace, dataloader,
           model: torch.nn.Module, ema_model: AveragedModel,
@@ -79,10 +82,6 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
 
 def compute_fid_checkpoint(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider,
                            reversal_fns: Reversal, sampler: TorchKacConstantSampler, temp_dir: str) -> float:
-    from Cluster.sampling import sample
-    from Cluster.eval import evaluate_fid
-    from torchvision.utils import save_image
-
     original_num_samples = args.sampling_num_samples
     args.sampling_num_samples = 5000
 
@@ -156,7 +155,9 @@ def save_best_model(save_path: str, best_fid_model_state, best_fid_model_type: s
         print('Saving the active model (fallback)')
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider, save_path: str):
+def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
+                     reversal_fns: Reversal, model: torch.nn.Module,
+                     data: DataProvider, save_path: str):
 
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -219,8 +220,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     temp_checkpoint_dir = tempfile.mkdtemp()
 
     try:
-        reversal_fns = Reversal(args=args)
-
         if args.which == 'kac':
             sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
         else:

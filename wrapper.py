@@ -223,12 +223,19 @@ if __name__ == "__main__":
     sampler = None
     if args.which == 'kac':
         from Cluster.utils.sample_kac import TorchKacConstantSampler
-        
         sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
     
 
     from Cluster.utils.reversals import Reversal
     reversal_fns = Reversal(args=args)
+
+
+    from Cluster.utils.lossFunctions import LossFns
+    loss_fn = LossFns(args=args, sampler=sampler)
+
+
+    from Cluster.utils.noisifier import Noisify
+    noisify_fns = Noisify(args=args)
 
 
     # Train the model
@@ -237,10 +244,7 @@ if __name__ == "__main__":
         print(f'\nStarting the training')
 
         from Cluster.training import training_wrapper
-        from Cluster.utils.lossFunctions import LossFns
-
-        loss_fn: object = LossFns(args=args, sampler=sampler)
-        training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, save_path=path_to_model)
+        training_wrapper(args=args, loss_fn=loss_fn, reversal_fns=reversal_fns, model=model, data=data, save_path=path_to_model)
 
 
     # Sample from the model
@@ -249,7 +253,6 @@ if __name__ == "__main__":
         print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
 
         from Cluster.sampling import sample_wrapper
-
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=save_path)
 
 
@@ -268,4 +271,7 @@ if __name__ == "__main__":
 
         # TODO Need to also implement distillation for all other processes, Schrödinger
         from Cluster.distillation import distillation_wrapper
-        student_model = distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model, reversal_fns=reversal_fns)
+        student_model = distillation_wrapper(
+            args=args, save_path=path_to_distilled_student, model_path=path_to_model,
+            reversal_fns=reversal_fns, noisify_fns=noisify_fns
+        )
