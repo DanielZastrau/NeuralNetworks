@@ -2,7 +2,6 @@
 
 import argparse
 
-import numpy as np
 import torch
 
 class Noisify():
@@ -24,9 +23,9 @@ class Noisify():
     def diffusion(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # * closed form solution to the reverse time SDE formulation of the diffusion process, see e.g. "Song et al 2021 - Score based generative modeling through SDEs"
 
-        from Cluster.utils.diffusion import b
+        from Cluster.utils.diffusion import Diffusion
 
-        b_t = b(t).view(-1, 1, 1, 1)
+        b_t = Diffusion.b(t).view(-1, 1, 1, 1)
         return torch.sqrt(1 - b_t**2) * torch.randn_like(x0) + b_t * x0
     
 
@@ -46,11 +45,11 @@ class Noisify():
 
         # Determine max jumps needed (Mean + 5 Standard Deviations buffer)
         t_max = torch.max(t_noise)
-        max_events = int((self.args.c * t_max) + 5 * torch.sqrt(self.args.c * t_max) + 10)
+        max_events = int((self.args.kac_c * t_max) + 5 * torch.sqrt(self.args.kac_c * t_max) + 10)
 
         # Generate inter-arrival times for all dimensions simultaneously
         # Shape: [max_events, *shape]
-        inter_arrivals = torch.empty((max_events, *shape), device=device).exponential_(1.0 / self.args.c)
+        inter_arrivals = torch.empty((max_events, *shape), device=device).exponential_(1.0 / self.args.kac_c)
 
         # Convert to absolute arrival times
         arrival_times = torch.cumsum(inter_arrivals, dim=0)
@@ -75,7 +74,7 @@ class Noisify():
 
         # Integrate: sum of (duration * sign) * velocity * initial_direction
         integral = torch.sum(durations * signs, dim=0)
-        noise = initial_directions * self.args.c * integral
+        noise = initial_directions * self.args.kac_c * integral
         
         # Calculate the mean reverting kac process starting in x0
         f_t = Kac.f(t, self.args.T, self.args.kac_f).view(-1, 1, 1, 1)
@@ -87,10 +86,6 @@ class Noisify():
     def mmd(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
 
         from Cluster.utils.mmd import MMD
-
-        # sample randomly uniformly from [0, 1]
-        # TODO add normalization for larger interval like for the other processes
-        t = torch.rand(x0.size(0), device=x0.device).view(-1, 1, 1, 1)
 
         # data schedule
         f_t = MMD.f(t=t)

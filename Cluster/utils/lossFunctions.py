@@ -23,7 +23,7 @@ class LossFns():
             
 
     def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
-        from Cluster.utils.diffusion import b
+        from Cluster.utils.diffusion import Diffusion
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -38,7 +38,7 @@ class LossFns():
         noise = torch.randn_like(x_0)
 
         # compute b(t)
-        b_t = b(t)
+        b_t = Diffusion.b(t)
         b_t = b_t.view(-1, 1, 1, 1)  # Reshape b_t to (batch_size, 1, 1, 1) for broadcasting
 
         # compute x
@@ -92,7 +92,7 @@ class LossFns():
 
         with torch.no_grad():
             # Compute velocity using g(t)
-            velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t, a=self.args.a, c=self.args.c, epsilon=1e-4, T=self.args.T)
+            velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t, a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
 
         # Model is conditioned on original time t
         pred = model(x_corrupted.view(B, 3, 32, 32), t.squeeze(1)).view(B, -1)
@@ -108,8 +108,7 @@ class LossFns():
         x0 = mini_batch
 
         # sample randomly uniformly from [0, 1]
-        # TODO add normalization for larger interval like for the other processes
-        t = torch.rand(x0.size(0), device=x0.device)
+        t = torch.rand(x0.size(0), device=x0.device) * self.args.T
 
         # data schedule
         f_t = MMD.f(t=t).view(-1, 1, 1, 1)

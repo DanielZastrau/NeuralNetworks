@@ -2,7 +2,6 @@ import torch
 
 class MMD:
     # * the scheduling functions f, g as proposed in 2025 - Duong Chemseddine Kornhardt - Adapting Noise to Data
-    # TODO should normalize them at some point to the case where we train over [0, T] instead of [0, 1]
 
     @staticmethod
     def f(t: torch.Tensor, T: float = 1.0) -> torch.Tensor:
