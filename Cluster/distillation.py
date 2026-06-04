@@ -66,10 +66,10 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
 
     print('\nPreparing distillation\n')
     # Number of teacher substeps, i.e. distilling N teacher steps into 1 student step
-    num_substeps = args.num_teacher_substeps
+    num_substeps = args.distill_num_teacher_substeps
 
     # Number of student steps, i.e. in the end we want to sample with M steps
-    num_steps = args.num_student_steps
+    num_steps = args.distill_num_student_steps
 
     if args.which == 'diffusion':
         # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
@@ -81,7 +81,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
     delta_t = 1 / num_steps
 
 
-    for iteration in range(args.iterations):
+    for iteration in range(args.distill_iterations):
         print(f'Starting iteration  {iteration}')
         optimizer.zero_grad()
 
@@ -90,7 +90,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         x_batch = x_batch.to(device)
 
         # sample a batch of endpoint time steps
-        indices = torch.randint(0, num_steps, (args.batch_size,), device=device)
+        indices = torch.randint(0, num_steps, (args.training_batch_size,), device=device)
         t_batch = linspace_of_endpoints[indices]
 
         # noisify x_batch according to t_batch

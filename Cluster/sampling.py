@@ -16,15 +16,15 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
                     sampler: TorchKacConstantSampler | None) -> torch.Tensor:
 
-    print(f"Sampling {args.num_samples} images for {args.which}  using {args.sampler} sampling...")
+    print(f"Sampling {args.sampling_num_samples} images for {args.which}  using {args.sampling_sampler} sampling...")
 
     batch_size = args.sampling_batch_size
     device = next(model.parameters()).device
 
     all_samples = []
 
-    for i in range(0, args.num_samples, batch_size):
-        curr_batch_size = min(batch_size, args.num_samples - i)
+    for i in range(0, args.sampling_num_samples, batch_size):
+        curr_batch_size = min(batch_size, args.sampling_num_samples - i)
         if i % 200 == 0:
             print(f'curr batch:  {i}')
         
@@ -44,32 +44,32 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
             x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
 
 
-        if args.sampler == 'ee':
+        if args.sampling_sampler == 'ee':
             reversal_fn = reversal_fns.explicit_euler
-        elif args.sampler == 'em':
+        elif args.sampling_sampler == 'em':
             # TODO rename to just euler_maruyama
             reversal_fn = reversal_fns.euler_maruyama
-        else:    # args.sampler == 'rk2':
+        else:    # args.sampling_sampler == 'rk2':
             reversal_fn = reversal_fns.rk2
         # TODO: sampler rk45, AB2
 
         # Properly scale continuous time from T down to epsilon
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
-        time_steps = torch.linspace(args.T, args.time_truncation, args.num_steps, device=device)
-        dt = (args.T - args.time_truncation) / args.num_steps
+        time_steps = torch.linspace(args.T, args.time_truncation, args.sampling_num_steps, device=device)
+        dt = (args.T - args.time_truncation) / args.sampling_num_steps
 
         for step_idx, t_val in enumerate(time_steps):
             
             if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-                print(f"Step {step_idx}/{args.num_steps}")
+                print(f"Step {step_idx}/{args.sampling_num_steps}")
 
             # Broadcast the continuous time value to the batch size
             t = torch.ones(curr_batch_size, device=device) * t_val
             
-            if args.sampler == 'em':
+            if args.sampling_sampler == 'em':
                 # Don't add random noise at the very last step
-                noise_injection_bool = (step_idx != args.num_steps - 1)
+                noise_injection_bool = (step_idx != args.sampling_num_steps - 1)
                     
                 x_batch = reversal_fn(
                     model=model,
@@ -109,7 +109,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
     samples = (samples + 1.0) / 2.0
     samples = samples.clamp(0.0, 1.0)
 
-    if args.sampler_mode == '8x8':
+    if args.sampling_sampler_mode == '8x8':
         grid = make_grid(samples, nrow=8, padding=2, normalize=False)
 
         plt.figure(figsize=(8, 8))    # type: ignore    plt badly typed
@@ -120,7 +120,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
         print(f"Saved generated samples to {save_path}")
         
         plt.close()
-    else:    # args.sampler_mode == 'set'
+    else:    # args.sampling_sampler_mode == 'set'
         os.makedirs(save_path, exist_ok=True)
         
         # save_image automatically handles the C, H, W shape and normalizes to 0-255 internally

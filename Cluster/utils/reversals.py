@@ -15,21 +15,20 @@ class Reversal():
 
     def __init__(self, args: argparse.Namespace):
         self.args = args
-
-        # Route the teacher integration method
-        if args.which == 'diffusion':
-            if args.distill_teacher_sampler == 'sde':
-                self.teacher_integrate = self.euler_maruyama
-            else:    
-                # pfODE relies on adaptive scipy solvers not suited for fixed-step distillation
-                raise NotImplementedError("Distillation requires explicit fixed-step solvers. Your current config wants to use rk45 with the pfODE for diffusion")
-        elif args.which == 'kac' or args.which == 'mmd':
-            if args.distill_teacher_sampler == 'ee':
-                self.teacher_integrate = self.explicit_euler
-            elif args.distill_teacher_sampler == 'rk2':
-                self.teacher_integrate = self.rk2
+            
+        if args.distill_teacher_sampler == 'ee':
+            self.teacher_integrate = self.explicit_euler
+        elif args.distill_teacher_sampler == 'rk2':
+            self.teacher_integrate = self.rk2
+        elif args.distill_teacher_sampler == 'em':
+            if args.which != 'diffusion':
+                raise ValueError('em is only allowed for diffusion')
             else:
-                raise NotImplementedError("Use 'ee' or 'rk2' for Kac distillation.")
+                self.teacher_integrate = self.euler_maruyama
+        elif args.distill_teacher_sampler == 'ab2':
+            raise NotImplementedError("Use 'ee' or 'rk2' for Kac distillation.")
+        elif args.distill_teacher_sampler == 'rk45':
+            raise ValueError('rk45 is not allowed for distillation')
 
         # Route the student integration method
         # Both currently share the explicit Euler step structure from Han et al. 2025
@@ -208,11 +207,11 @@ class Reversal():
                 x_batch, 
                 t_vals, 
                 method='dopri5', 
-                rtol=self.args.rel_tol, 
-                atol=self.args.kac_abs_tol
+                rtol=self.args.sampling_rel_tol, 
+                atol=self.args.abs_tol
             )
 
-            print(f'It took  {ode_fn.nfe}  nfes to complete with a{self.args.kac_abs_tol}  r{self.args.rel_tol}')
+            print(f'It took  {ode_fn.nfe}  nfes to complete with a{self.args.abs_tol}  r{self.args.sampling_rel_tol}')
 
         # Extract terminal state
         return sol[-1]

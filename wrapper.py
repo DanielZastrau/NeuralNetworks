@@ -11,60 +11,56 @@ if __name__ == "__main__":
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill', 'sample_student', 'eval_student'], default='full',
+    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill'], default='full',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
     
 
     # ! training arguments
-    parser.add_argument('--epochs', type=int, default=200,
+    parser.add_argument('--training-epochs', type=int, default=200,
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
-    parser.add_argument('--batch-size', type=int, default=128,
+    parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
     
 
     # ! sampling arguments
     # TODO at some point only do one sampler argument and handle the correctness in your argument dependency checker
-    parser.add_argument('--sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
+    parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
                         help='chose a method to sample with, em is only available for diffusion models.')
-    parser.add_argument('--sampler-mode', type=str, choices=['8x8', 'set'], default='set',
+    parser.add_argument('--sampling-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
-    parser.add_argument('--num-steps', type=int, default=8192,
+    parser.add_argument('--sampling-num-steps', type=int, default=8192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
     parser.add_argument('--sampling-batch-size', type=int, default=512,
                         help='specifies how many samples are to be processed at the same time. I.e. the tensor shape.')
 
     # configuration of the adaptive solver RK45
-    parser.add_argument('--rel-tol', type=float, default=1e-4,
+    parser.add_argument('--sampling-rel-tol', type=float, default=1e-4,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
-    parser.add_argument('--abs-tol', type=float, default=1e-4,
+    parser.add_argument('--sampling-abs-tol', type=float, default=1e-4,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
-
 
     # ! dual use for sampling and evaluating
-    parser.add_argument('--num-samples', type=int, default=50_000,
+    parser.add_argument('--sampling-num-samples', type=int, default=50_000,
                         help='only needed if sampler_mode is set to "set", specifies how many samples are to be generated')
 
 
     # ! distillation arguments
+    parser.add_argument('--distill-iterations', type=int, default=100,
+                        help='sets the amount of iterations the student model should be trained for')
     parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'],
                         help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to ee')
     parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'],
                         help='provides the possibility to set a different student sampler than ee, if not set defaults to explicit euler')
-    parser.add_argument('--iterations', type=int, default=100,
-                        help='sets the amount of iterations the student model should be trained for')
-    parser.add_argument('--num-student-steps', type=int, default=1024,
+    parser.add_argument('--distill-num-student-steps', type=int, default=1024,
                         help='specifies the amount of steps the student should do in order to sample, i.e. a 20-step student or a 10-step student.')
-    parser.add_argument('--num-teacher-substeps', type=int, default=10,
+    parser.add_argument('--distill-num-teacher-substeps', type=int, default=10,
                         help='the amount of teacher steps the student is supposed to learn')
+
+
+    # ! general arguments
     parser.add_argument('--model', type=str,
-                        help='specifies the path to the model which is supposed to be distilled. Absolute or relative to the execution location')
-
-
-    # ! student sample / eval arguments
-    parser.add_argument('--student-model', type=str,
-                        help='path to student model, relative or absolute, needed if "what" is set to "sample_student" or "eval_student"\
-                            if not set defaults to later determined student model path')
+                        help='path to model, relative or absolute, needed if "what" is set to "sample" or "eval" or "distill"')
 
 
     # ! configuration arguments
@@ -114,12 +110,14 @@ if __name__ == "__main__":
     from Cluster.utils.argumentDependencyChecker import assert_dependencies
     assert_dependencies(args=args)
 
-
-    if args.sampler_mode == '8x8':
-        args.num_samples = 64
+    # set some standard values
+    if args.sampling_mode == '8x8':
+        args.sampling_num_samples = 64
 
     if args.which == 'kac':
         args.time_truncation = 0
+
+    args.lr = args.lr * (args.training_batch_size / 128)
 
     print(f'\nData directory:  {args.data_dir}\n')
 
@@ -136,7 +134,7 @@ if __name__ == "__main__":
 
 
     # Set up the model path
-    path_to_model = f"{args.where}_{args.which}_epochs{args.epochs}_model.pth"
+    path_to_model = f"{args.where}_{args.which}_epochs{args.training_epochs}_model.pth"
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}"
 
@@ -146,37 +144,37 @@ if __name__ == "__main__":
 
 
     # Set up the student model path
-    path_to_distilled_student = f"{args.where}_{args.which}_epochs{args.epochs}_model_student.pth"
+    path_to_distilled_student = f"{args.where}_{args.which}_epochs{args.training_epochs}_model_student.pth"
     if args.where == 'cluster':
         path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}"
     print(f'\nDetermined student model path:  {path_to_distilled_student}\n')
 
 
     # Set up model image path
-    base_name = f"{args.which}_epochs{args.epochs}_sampler{args.sampler}"
-    if args.sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
-        base_name = f'{base_name}_steps{args.num_steps}'
+    base_name = f"{args.which}_epochs{args.training_epochs}_sampler{args.sampling_sampler}"
+    if args.sampling_sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
+        base_name = f'{base_name}_steps{args.sampling_num_steps}'
     else:
         base_name = f'{base_name}_rk45'
 
     # Mode specific path extension
-    if args.sampler_mode == '8x8':
+    if args.sampling_mode == '8x8':
         base_name = f'{base_name}_8x8.png'
-    else:    # args.sampler_mode == 'set'
+    else:    # args.sampling_mode == 'set'
         base_name = f'{base_name}_set'
         
 
     # Set up student image path
-    student_base_name = f"{args.which}_iterations{args.iterations}_sampler{args.sampler}"
-    if args.sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
-        student_base_name = f'{student_base_name}_steps{args.num_steps}'
+    student_base_name = f"{args.which}_iterations{args.distill_iterations}_sampler{args.sampling_sampler}"
+    if args.sampling_sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
+        student_base_name = f'{student_base_name}_steps{args.sampling_num_steps}'
     else:
         student_base_name = f'{student_base_name}_rk45'
 
     # Mode specific path extension
-    if args.sampler_mode == '8x8':
+    if args.sampling_mode == '8x8':
         student_base_name = f'{student_base_name}_8x8.png'
-    else:    # args.sampler_mode == 'set'
+    else:    # args.sampling_mode == 'set'
         student_base_name = f'{student_base_name}_set'
 
 
@@ -184,10 +182,10 @@ if __name__ == "__main__":
     save_path = f"./{base_name}"
     student_save_path = f'./{student_base_name}'
     if args.where == 'cluster':
-        if args.sampler_mode == '8x8':
+        if args.sampling_mode == '8x8':
             save_path = f"/homes/math/zastrau/NeuralNetworkSamples/{base_name}"
             student_save_path = f'/homes/math/zastrau/NeuralNetworkSamples/{student_base_name}'
-        else:    # args.sampler_mode == 'set'
+        else:    # args.sampling_mode == 'set'
             save_path = f"/work/zastrau/samples/{base_name}"
             student_save_path = f'/work/zastrau/samples/{student_base_name}'
     print(f'\nDetermined teacher image path: {save_path}\n')
@@ -267,7 +265,7 @@ if __name__ == "__main__":
     # Sample from the model
     if args.what in ['full', 'sample']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nStarting the sampling for {args.which} with {args.sampler}\n')
+        print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}\n')
 
         from Cluster.sampling import sample_wrapper
 
@@ -285,25 +283,25 @@ if __name__ == "__main__":
 
     if args.what in ['full', 'distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the teacher model {path_to_model} into a {args.num_student_steps}step student')
+        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps}step student')
 
         # TODO Need to also implement distillation for all other processes, MMD and Schrödinger
         from Cluster.distillation import distillation_wrapper
         student_model = distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model, reversal_fns=reversal_fns)
 
 
-    if args.what in ['full', 'sample_student']:
+    if args.what in ['full']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for the {args.which} student with ee\n')
 
         from Cluster.sampling import sample_wrapper
-        args.num_steps = args.num_student_steps
+        args.sampling_num_steps = args.distill_num_student_steps
 
         sample_wrapper(args=args, model=student_model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=student_save_path)
 
 
     # Evaluate the model using FID
-    if args.what in ['full', 'eval_student']:
+    if args.what in ['full']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_distilled_student}\n')
 
