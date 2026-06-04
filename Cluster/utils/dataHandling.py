@@ -82,14 +82,14 @@ class DataProvider():
         # Create data loaders.
         train_dataloader = DataLoader(    # type: ignore
             training_data,
-            batch_size=self.args.batch_size,
+            batch_size=self.args.training_batch_size,
             shuffle=True,
             num_workers=4,
             pin_memory=True if self.args.where == 'cluster' else False
         )
         test_dataloader = DataLoader(    # type: ignore
             test_data,
-            batch_size=self.args.batch_size,
+            batch_size=self.args.training_batch_size,
             num_workers=4,
             pin_memory=True if self.args.where == 'cluster' else False
         )
@@ -113,20 +113,20 @@ class DataProvider():
         )
 
         # Validate requested sample size
-        if len(eval_set) < self.args.num_samples:
-            raise ValueError(f"Requested {self.args.num_samples} samples, but CIFAR10 test set only has {len(eval_set)}.")
-        eval_set = Subset(eval_set, range(self.args.num_samples))    # type: ignore
+        if len(eval_set) < self.args.sampling_num_samples:
+            raise ValueError(f"Requested {self.args.sampling_num_samples} samples, but CIFAR10 test set only has {len(eval_set)}.")
+        eval_set = Subset(eval_set, range(self.args.sampling_num_samples))    # type: ignore
 
         dataset_loader = DataLoader(eval_set, batch_size=128, num_workers=4)    # type: ignore
 
 
         generated_set_full = FlatDirectoryDataset(directory=path_to_generated_samples, transform=transform)
 
-        if len(generated_set_full) < self.args.num_samples:
-            raise ValueError(f"Requested {self.args.num_samples} samples, but fake directory only has {len(generated_set_full)}.")
+        if len(generated_set_full) < self.args.sampling_num_samples:
+            raise ValueError(f"Requested {self.args.sampling_num_samples} samples, but fake directory only has {len(generated_set_full)}.")
 
         # Slice down to exactly `num_samples`
-        generated_set = Subset(generated_set_full, range(self.args.num_samples))    # type: ignore
+        generated_set = Subset(generated_set_full, range(self.args.sampling_num_samples))    # type: ignore
 
         generated_set_loader = DataLoader(generated_set, batch_size=128, num_workers=4)    # type: ignore
 

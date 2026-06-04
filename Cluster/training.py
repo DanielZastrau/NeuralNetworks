@@ -1,12 +1,8 @@
-"""
-! Implemented exponential moving average, just be aware, the base logic is that it is the superior model
-"""
-
 import argparse
 import copy
 
 import torch
-from torch.optim.lr_scheduler import LinearLR, CosineAnnealingLR, SequentialLR
+from torch.optim.lr_scheduler import LinearLR, ConstantLR, SequentialLR
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
 from Cluster.utils.dataHandling import DataProvider
@@ -54,11 +50,8 @@ def train(args: argparse.Namespace, dataloader,
         if args.proof_of_concept:
             break
 
-    print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
-
-def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns,    # type: ignore    due to type of dataloader partially unknown warning
-         prefix: str = ''):
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_batches = len(dataloader)
@@ -75,7 +68,6 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
                 break
         
     avg_test_loss = test_loss.item() / num_batches
-    print(f"{prefix}  Test Avg loss: {avg_test_loss:>8f} \n")
     
     return avg_test_loss
 
@@ -85,9 +77,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    print('\nSetting optimizer and learning rates')
     # Define step counts
-    epochs = args.epochs
+    epochs = args.training_epochs
     batches_per_epoch = len(train_dataloader)    # type: ignore
     total_steps = epochs * batches_per_epoch
     warmup_steps = int(total_steps * 0.05) 
@@ -104,22 +95,21 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
         total_iters=warmup_steps
     )
 
-    # Decay: Cosine annealing for the remainder of training
-    cosine_scheduler = CosineAnnealingLR(
+    # Constant learning rate after warmup
+    constant_scheduler = ConstantLR(
         optimizer,
-        T_max=(total_steps - warmup_steps),
-        eta_min=1e-5
+        factor=1.0,
+        total_iters=1
     )
 
     # Chain the schedulers
     scheduler = SequentialLR(
-        optimizer, 
-        schedulers=[warmup_scheduler, cosine_scheduler], 
+        optimizer,
+        schedulers=[warmup_scheduler, constant_scheduler],
         milestones=[warmup_steps]
     )
     
     # Initialize the Gradient Scaler for AMP
-    print('\nInitialize the amp grad scaler')
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
     # Initialize the EMA Model
@@ -144,9 +134,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
         # evaluate both the active model and the ema model
         active_loss = test(args, test_dataloader, model, loss_fn, 'active')
         ema_loss = test(args, test_dataloader, ema_model, loss_fn, 'ema')
-
-        print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
-
 
         # Gate on the superior configuration for this epoch
         current_best_loss = min(active_loss, ema_loss)
