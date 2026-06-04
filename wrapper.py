@@ -1,4 +1,6 @@
-"""Wraps around all other functionalities to provide a unified entrypoint to the training, evaluating and sampling for the 4 generative models."""
+"""Wraps around all other functionalities to provide a unified entrypoint to the training, evaluating and sampling for the 4 generative models.
+# ! No automatic sampling and evaluation of a distilled student, that has to be handled externally
+"""
 
 if __name__ == "__main__":
     import argparse
@@ -23,7 +25,6 @@ if __name__ == "__main__":
     
 
     # ! sampling arguments
-    # TODO at some point only do one sampler argument and handle the correctness in your argument dependency checker
     parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
                         help='chose a method to sample with, em is only available for diffusion models.')
     parser.add_argument('--sampling-mode', type=str, choices=['8x8', 'set'], default='set',
@@ -119,7 +120,8 @@ if __name__ == "__main__":
 
     args.lr = args.lr * (args.training_batch_size / 128)
 
-    print(f'\nData directory:  {args.data_dir}\n')
+
+    print(f'\nData directory:  {args.data_dir}')
 
 
     from Cluster.utils.dataHandling import DataProvider
@@ -130,7 +132,7 @@ if __name__ == "__main__":
     import torch
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.set_float32_matmul_precision('high')
-    print(f'\nDetermined device:  {device}\n')
+    print(f'\nDetermined device:  {device}')
 
 
     # Set up the model path
@@ -140,14 +142,14 @@ if __name__ == "__main__":
 
     if args.what != 'full' and args.what != 'train':    # then a path to a model has to be given through the arguments
         path_to_model = args.model
-    print(f'\nDetermined model path:  {path_to_model}\n')
+    print(f'\nDetermined model path:  {path_to_model}')
 
 
     # Set up the student model path
     path_to_distilled_student = f"{args.where}_{args.which}_epochs{args.training_epochs}_model_student.pth"
     if args.where == 'cluster':
         path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}"
-    print(f'\nDetermined student model path:  {path_to_distilled_student}\n')
+    print(f'\nDetermined student model path:  {path_to_distilled_student}')
 
 
     # Set up model image path
@@ -188,8 +190,8 @@ if __name__ == "__main__":
         else:    # args.sampling_mode == 'set'
             save_path = f"/work/zastrau/samples/{base_name}"
             student_save_path = f'/work/zastrau/samples/{student_base_name}'
-    print(f'\nDetermined teacher image path: {save_path}\n')
-    print(f'\nDetermined student image path: {student_save_path}\n')
+    print(f'\nDetermined teacher image path: {save_path}')
+    print(f'\nDetermined student image path: {student_save_path}')
 
 
     # Set up model based on location
@@ -202,33 +204,8 @@ if __name__ == "__main__":
         from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
-        size = 'small'
-
     if args.what in ['eval', 'sample']:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
-    print(f'\nInstantiated the {size} model\n')
-
-
-    # If student in args.what, that means, that no teacher is trained and no student is distilled thus we need to initialize from a saved model
-    if 'student' in args.what:
-        if args.student_model is None:
-            path = path_to_distilled_student
-        else:
-            path = args.student_model
-
-        if args.where == 'cluster':
-            from Cluster.utils.modelGetter import model_getter
-            student_model = model_getter(args=args).to(device)
-
-            size = 'large'
-        else:    # args.where == 'local'
-            from Cluster.networks.neuralNetworkSmall import ConditionalUNet
-            student_model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
-
-            size = 'small'
-
-        student_model.load_state_dict(torch.load(path, map_location=device))
-        print(f'\nInstantiated the {size} model\n')
 
 
     # compile the model to fuse and optimize the UNet graph for the GPU
@@ -242,7 +219,6 @@ if __name__ == "__main__":
         from Cluster.utils.sample_kac import TorchKacConstantSampler
         
         sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
-        print('\nInstantiated the kac sampler\n')
     
 
     from Cluster.utils.reversals import Reversal
@@ -252,12 +228,11 @@ if __name__ == "__main__":
     # Train the model
     if args.what in ['full', 'train']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nStarting the training\n')
+        print(f'\nStarting the training')
 
         from Cluster.training import training_wrapper
         from Cluster.utils.lossFunctions import LossFns
 
-        print(f'\nInstantiating the loss function\n')
         loss_fn: object = LossFns(args=args, sampler=sampler)
         training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, save_path=path_to_model)
 
@@ -265,7 +240,7 @@ if __name__ == "__main__":
     # Sample from the model
     if args.what in ['full', 'sample']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}\n')
+        print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
 
         from Cluster.sampling import sample_wrapper
 
@@ -275,7 +250,7 @@ if __name__ == "__main__":
     # Evaluate the model using FID
     if args.what in ['full', 'eval']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nEvaluating the model {path_to_model}\n')
+        print(f'\nEvaluating the model {path_to_model}')
 
         from Cluster.eval import eval_wrapper
         eval_wrapper(args=args, data=data, img_path=save_path)
@@ -283,27 +258,8 @@ if __name__ == "__main__":
 
     if args.what in ['full', 'distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps}step student')
+        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student')
 
-        # TODO Need to also implement distillation for all other processes, MMD and Schrödinger
+        # TODO Need to also implement distillation for all other processes, Schrödinger
         from Cluster.distillation import distillation_wrapper
         student_model = distillation_wrapper(args=args, save_path=path_to_distilled_student, model_path=path_to_model, reversal_fns=reversal_fns)
-
-
-    if args.what in ['full']:
-        print('----------------------------------------------------------------------------------------------------')
-        print(f'\nStarting the sampling for the {args.which} student with ee\n')
-
-        from Cluster.sampling import sample_wrapper
-        args.sampling_num_steps = args.distill_num_student_steps
-
-        sample_wrapper(args=args, model=student_model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=student_save_path)
-
-
-    # Evaluate the model using FID
-    if args.what in ['full']:
-        print('----------------------------------------------------------------------------------------------------')
-        print(f'\nEvaluating the model {path_to_distilled_student}\n')
-
-        from Cluster.eval import eval_wrapper
-        eval_wrapper(args=args, data=data, img_path=student_save_path)

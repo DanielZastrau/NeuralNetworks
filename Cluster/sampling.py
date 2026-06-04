@@ -16,8 +16,6 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
                     sampler: TorchKacConstantSampler | None) -> torch.Tensor:
 
-    print(f"Sampling {args.sampling_num_samples} images for {args.which}  using {args.sampling_sampler} sampling...")
-
     batch_size = args.sampling_batch_size
     device = next(model.parameters()).device
 
@@ -47,7 +45,6 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         if args.sampling_sampler == 'ee':
             reversal_fn = reversal_fns.explicit_euler
         elif args.sampling_sampler == 'em':
-            # TODO rename to just euler_maruyama
             reversal_fn = reversal_fns.euler_maruyama
         else:    # args.sampling_sampler == 'rk2':
             reversal_fn = reversal_fns.rk2
@@ -103,13 +100,11 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
 
     samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
 
-    print(f"Generated samples shape: {samples.shape}")  # Should be (64, 3, 32, 32)
-
     # if your images are normalized to [-1, 1], rescale to [0, 1]
     samples = (samples + 1.0) / 2.0
     samples = samples.clamp(0.0, 1.0)
 
-    if args.sampling_sampler_mode == '8x8':
+    if args.sampling_mode == '8x8':
         grid = make_grid(samples, nrow=8, padding=2, normalize=False)
 
         plt.figure(figsize=(8, 8))    # type: ignore    plt badly typed
@@ -117,7 +112,6 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
         plt.axis("off")    # type: ignore    plt badly typed
 
         plt.savefig(save_path, dpi=200, bbox_inches="tight", pad_inches=0)    # type: ignore    plt badly typed
-        print(f"Saved generated samples to {save_path}")
         
         plt.close()
     else:    # args.sampling_sampler_mode == 'set'
@@ -127,5 +121,3 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
         for i, img in enumerate(samples):
             img_path = os.path.join(save_path, f"sample_{i:05d}.png")
             save_image(img, img_path)
-            
-        print(f"Saved {len(samples)} individual images to {save_path}/")

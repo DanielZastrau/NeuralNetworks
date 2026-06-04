@@ -108,8 +108,7 @@ class LossFns():
         x0 = mini_batch
 
         # sample randomly uniformly from [0, 1]
-        # TODO add normalization for larger interval like for the other processes
-        t = torch.rand(x0.size(0), device=x0.device)
+        t = torch.rand(x0.size(0), device=x0.device) * self.args.T
 
         # data schedule
         f_t = MMD.f(t=t).view(-1, 1, 1, 1)

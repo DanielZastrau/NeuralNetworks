@@ -50,11 +50,8 @@ def train(args: argparse.Namespace, dataloader,
         if args.proof_of_concept:
             break
 
-    print(f"\n Train Avg loss: {train_loss.item() / len(dataloader):>8f} \n")
 
-
-def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns,    # type: ignore    due to type of dataloader partially unknown warning
-         prefix: str = ''):
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_batches = len(dataloader)
@@ -71,7 +68,6 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
                 break
         
     avg_test_loss = test_loss.item() / num_batches
-    print(f"{prefix}  Test Avg loss: {avg_test_loss:>8f} \n")
     
     return avg_test_loss
 
@@ -81,7 +77,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    print('\nSetting optimizer and learning rates')
     # Define step counts
     epochs = args.training_epochs
     batches_per_epoch = len(train_dataloader)    # type: ignore
@@ -115,7 +110,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     )
     
     # Initialize the Gradient Scaler for AMP
-    print('\nInitialize the amp grad scaler')
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
     # Initialize the EMA Model
@@ -140,9 +134,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
         # evaluate both the active model and the ema model
         active_loss = test(args, test_dataloader, model, loss_fn, 'active')
         ema_loss = test(args, test_dataloader, ema_model, loss_fn, 'ema')
-
-        print(f"LR after epoch {epoch+1}: {scheduler.get_last_lr()[0]:.6f}")
-
 
         # Gate on the superior configuration for this epoch
         current_best_loss = min(active_loss, ema_loss)

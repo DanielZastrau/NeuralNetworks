@@ -10,8 +10,8 @@ class Reversal():
     
     All methods should get a starting time point t, and either a delta_t or t_end, a model and a data point x.
     """
-    # ! If used in the distillation module, only explicit methods with fixed timesteps are to be specified, since distillation does not exactly work with adaptive solvers.
-    # TODO check that intuition again
+    # ! If used in the distillation module, only explicit methods with fixed timesteps are to be specified,
+    # ! since distillation does not exactly work with adaptive solvers.
 
     def __init__(self, args: argparse.Namespace):
         self.args = args
