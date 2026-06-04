@@ -61,7 +61,7 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
     delta_t = 1 / args.distill_num_student_steps
 
 
-    for iteration in range(args.iterations):
+    for iteration in range(args.distill_iterations):
         optimizer.zero_grad()
 
         # sample a batch from the dataset
