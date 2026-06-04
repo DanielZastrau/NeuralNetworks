@@ -35,6 +35,15 @@ class Reversal():
         self.student_integrate = self.student_explicit_euler
 
 
+        # TODO: sampler rk45, AB2
+        if args.sampling_sampler == 'ee':
+            self.integrator = self.explicit_euler
+        elif args.sampling_sampler == 'rk2':
+            self.integrator = self.rk2
+        elif args.sampling_sampler == 'em' and args.which == 'diffusion':
+            self.integrator = self.euler_maruyama
+
+
     # =============================================================================================
     # student solver
 
