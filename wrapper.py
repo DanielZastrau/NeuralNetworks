@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill'], default='full',
+    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill', 'train+eval'], default='full',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
     
 
@@ -226,7 +226,7 @@ if __name__ == "__main__":
 
 
     # Train the model
-    if args.what in ['full', 'train']:
+    if args.what in ['full', 'train', 'train+eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the training')
 
@@ -238,7 +238,7 @@ if __name__ == "__main__":
 
 
     # Sample from the model
-    if args.what in ['full', 'sample']:
+    if args.what in ['full', 'sample', 'train+eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
 
@@ -248,7 +248,7 @@ if __name__ == "__main__":
 
 
     # Evaluate the model using FID
-    if args.what in ['full', 'eval']:
+    if args.what in ['full', 'eval', 'train+eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_model}')
 
