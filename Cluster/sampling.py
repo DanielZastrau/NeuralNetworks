@@ -59,7 +59,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         for step_idx, t_val in enumerate(time_steps):
             
             if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-                print(f"Step {step_idx}/{args.sampling_num_steps}")
+                print(f"Step {step_idx}/{args.sampling_num_steps}", end='\r')
 
             # Broadcast the continuous time value to the batch size
             t = torch.ones(curr_batch_size, device=device) * t_val
