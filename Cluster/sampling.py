@@ -10,69 +10,11 @@ from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.reversals import Reversal
 
-@torch.inference_mode()
-def sample_diff(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider, reversal_fns: Reversal,
-                mode: str = 'teacher') -> torch.Tensor:
-    print(f"Sampling {args.num_samples} images using {args.sampler_diff} sampling...")
-
-    batch_size = args.sampling_batch_size
-    device = next(model.parameters()).device
-
-    all_samples = []
-
-    for i in range(0, args.num_samples, batch_size):
-        curr_batch_size = min(batch_size, args.num_samples - i)
-        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
-
-        # Initialize x with random noise from the prior distribution
-        x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
-
-        # ! adaptive timestepping is only allowed for the teacher model right now
-        if args.sampler_diff == 'pfode' and mode == 'teacher':
-            x_batch = reversal_fns.rk45_wrapper(
-                model=model,
-                data=data,
-                x_batch=x_batch,
-                t_start=args.T,
-                t_end=args.time_truncation
-            )
-        
-        elif mode == 'student' or args.sampler_diff == 'sde':
-
-            # Properly scale continuous time from T down to epsilon
-            time_steps = torch.linspace(1.0, args.time_truncation, args.num_steps, device=device)
-            dt = (1.0 - args.time_truncation) / args.num_steps
-
-            for step_idx, t_val in enumerate(time_steps):
-
-                if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-                    print(f"Step {step_idx}/{args.num_steps}")
-
-                # Broadcast the continuous time value to the batch size
-                t = torch.ones(curr_batch_size, device=device) * t_val
-
-                # Don't add random noise at the very last step
-                noise_injection_bool = (step_idx != args.num_steps - 1)
-                    
-                x_batch = reversal_fns.diffusion_euler_maruyama(
-                    model=model,
-                    x_batch=x_batch,
-                    t_start=t,
-                    dt=dt,
-                    num_substeps=1,
-                    noise_injection_bool=noise_injection_bool
-                )
-
-
-        all_samples.append(x_batch.cpu())
-
-    return torch.cat(all_samples, dim=0)
-
 
 @torch.inference_mode()
 def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
-                    sampler: TorchKacConstantSampler | None, mode: str = 'teacher') -> torch.Tensor:
+                    sampler: TorchKacConstantSampler | None) -> torch.Tensor:
 
     print(f"Sampling {args.num_samples} images for {args.which}  using {args.sampler} sampling...")
 
@@ -83,8 +25,9 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
 
     for i in range(0, args.num_samples, batch_size):
         curr_batch_size = min(batch_size, args.num_samples - i)
-        print(f'curr batch size:  {curr_batch_size},    curr batch:  {i}')
-
+        if i % 200 == 0:
+            print(f'curr batch:  {i}')
+        
         # Initialize with random noise
         if args.which == 'mmd':
             from Cluster.utils.mmd import MMD
@@ -92,16 +35,21 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
                                     x=torch.ones(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height),
                                     b=args.mmd_b)
 
-        else:    # args.which == 'kac':
-            # Initiate Kac noise
+        elif args.which == 'kac':
             assert isinstance(sampler, TorchKacConstantSampler)
             x_batch = sampler.sample(torch.ones(curr_batch_size, 1, device=device) * args.T, dim=data.data_dims.total_dimension).to(device)
             x_batch = x_batch.view(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
 
+        else:    # args.which == 'diffusion':
+            x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
+
 
         if args.sampler == 'ee':
             reversal_fn = reversal_fns.explicit_euler
-        else:    # args.sampler_kac == 'rk2':
+        elif args.sampler == 'em':
+            # TODO rename to just euler_maruyama
+            reversal_fn = reversal_fns.euler_maruyama
+        else:    # args.sampler == 'rk2':
             reversal_fn = reversal_fns.rk2
         # TODO: sampler rk45, AB2
 
@@ -109,7 +57,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
         time_steps = torch.linspace(args.T, args.time_truncation, args.num_steps, device=device)
-        dt = args.T / args.num_steps
+        dt = (args.T - args.time_truncation) / args.num_steps
 
         for step_idx, t_val in enumerate(time_steps):
             
@@ -119,30 +67,41 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
             # Broadcast the continuous time value to the batch size
             t = torch.ones(curr_batch_size, device=device) * t_val
             
-            x_batch = reversal_fn(
-                model=model,
-                x_batch=x_batch,
-                t_start=t,
-                dt=dt,
-                num_substeps=1
-            )
+            if args.sampler == 'em':
+                # Don't add random noise at the very last step
+                noise_injection_bool = (step_idx != args.num_steps - 1)
+                    
+                x_batch = reversal_fn(
+                    model=model,
+                    x_batch=x_batch,
+                    t_start=t,
+                    dt=dt,
+                    num_substeps=1,
+                    noise_injection_bool=noise_injection_bool
+                )
+
+            else:
+                x_batch = reversal_fn(
+                    model=model,
+                    x_batch=x_batch,
+                    t_start=t,
+                    dt=dt,
+                    num_substeps=1
+                )
         
-        all_samples.append(x_batch)
+        all_samples.append(x_batch.cpu())
 
     return torch.cat(all_samples, dim=0)
 
 
 def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider, sampler: TorchKacConstantSampler | None,
-                   reversal_fns: Reversal, save_path: str, mode: str = 'teacher'):
+                   reversal_fns: Reversal, save_path: str):
     """
     the sampler argument only exists so that the full wrapper does not show a warning for a missing argument
     """
 
-    if args.which == 'diffusion':
-        samples = sample_diff(args=args, model=model, data=data, reversal_fns=reversal_fns, mode=mode)
-    else:    # args.which == 'kac' or args.which == 'mmd':
-        # Assert that a properly inititialized sampler has been passed
-        samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
+
+    samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
 
     print(f"Generated samples shape: {samples.shape}")  # Should be (64, 3, 32, 32)
 
@@ -161,7 +120,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
         print(f"Saved generated samples to {save_path}")
         
         plt.close()
-    else:    # args.sampler_diff_mode == 'set'
+    else:    # args.sampler_mode == 'set'
         os.makedirs(save_path, exist_ok=True)
         
         # save_image automatically handles the C, H, W shape and normalizes to 0-255 internally

@@ -26,12 +26,6 @@ if __name__ == "__main__":
     # TODO at some point only do one sampler argument and handle the correctness in your argument dependency checker
     parser.add_argument('--sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
                         help='chose a method to sample with, em is only available for diffusion models.')
-    parser.add_argument('--sampler-diff', type=str, choices=['sde', 'pfode'], default='sde',
-                        help='only required if the "which" flag is set to "diffusion" defaults to euler-maruyama scheme of the reverse time SDE')
-    parser.add_argument('--sampler-kac', type=str, choices=['ee', 'rk2', 'rk45'], default='ee',
-                        help='only required if the "which" flag is set to "kac" defaults to flowODE with ee')    # TODO: might delete this since I only want to be using RK45
-    parser.add_argument('--sampler-mmd', type=str, choices=['ee', 'rk2', 'rk45'], default='ee',
-                        help='only required if the "which" flag is set to "mmd" defaults to flowODE with ee')
     parser.add_argument('--sampler-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
@@ -78,21 +72,18 @@ if __name__ == "__main__":
                         help='specifies the learning rate of the training process')
     parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
                         help='which dataset you want to train on options include [cifar10]')
-    
-
-    # of diffusion
+    parser.add_argument('--T', type=float, default=1.0,
+                        help='specifies the time horizon T')
     # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
     parser.add_argument('--time-truncation', type=float, default=1e-5,
-                        help='lets you set a cutoff time for the diffusion model, defaults to 1e-5')
+                        help='lets you set a cutoff time for the model, defaults to 1e-5, used for diffusion training and sampling, mmd sampling')
     
 
     # of kac
-    parser.add_argument('--a', type=float, default=9.0,
+    parser.add_argument('--kac-a', type=float, default=9.0,
                         help='specifies the damping coefficient a of the kac process')
-    parser.add_argument('--c', type=float, default=3.0,
+    parser.add_argument('--kac-c', type=float, default=3.0,
                         help='specifies the wave front speed c of the kac process')
-    parser.add_argument('--T', type=float, default=1.0,
-                        help='specifies the time horizon T of the kac process')
     parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
     parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
@@ -120,7 +111,7 @@ if __name__ == "__main__":
 
 
     # Checking if argument dependencies are fulfilled
-    from Cluster.argumentDependencyChecker import assert_dependencies
+    from Cluster.utils.argumentDependencyChecker import assert_dependencies
     assert_dependencies(args=args)
 
 
@@ -161,31 +152,34 @@ if __name__ == "__main__":
     print(f'\nDetermined student model path:  {path_to_distilled_student}\n')
 
 
-    # Set up image path
-    base_name = f"{args.which}_epochs{args.epochs}"
-    # Process specific path extension
-    if args.which == 'diffusion':
-        base_name = f"{base_name}_sampler{args.sampler_diff}"
-        if args.sampler_diff == 'sde':
-            base_name = f"{base_name}_steps{args.num_steps}"
-
-    else:    # args.which == 'kac'
-        base_name = f"{base_name}_sampler{args.sampler_kac}"
-        if args.sampler_kac in ['ee', 'rk2']:    # then fixed step size
-            base_name = f'{base_name}_steps{args.num_steps}'
-        else:
-            base_name = f'{base_name}_rk45'
-
-    student_base_name = f'{base_name}_student'
+    # Set up model image path
+    base_name = f"{args.which}_epochs{args.epochs}_sampler{args.sampler}"
+    if args.sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
+        base_name = f'{base_name}_steps{args.num_steps}'
+    else:
+        base_name = f'{base_name}_rk45'
 
     # Mode specific path extension
     if args.sampler_mode == '8x8':
         base_name = f'{base_name}_8x8.png'
-        student_base_name = f'{student_base_name}_8x8.png'
     else:    # args.sampler_mode == 'set'
         base_name = f'{base_name}_set'
-        student_base_name = f'{student_base_name}_set'
         
+
+    # Set up student image path
+    student_base_name = f"{args.which}_iterations{args.iterations}_sampler{args.sampler}"
+    if args.sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
+        student_base_name = f'{student_base_name}_steps{args.num_steps}'
+    else:
+        student_base_name = f'{student_base_name}_rk45'
+
+    # Mode specific path extension
+    if args.sampler_mode == '8x8':
+        student_base_name = f'{student_base_name}_8x8.png'
+    else:    # args.sampler_mode == 'set'
+        student_base_name = f'{student_base_name}_set'
+
+
     # Location specific path start
     save_path = f"./{base_name}"
     student_save_path = f'./{student_base_name}'
@@ -226,16 +220,16 @@ if __name__ == "__main__":
 
         if args.where == 'cluster':
             from Cluster.utils.modelGetter import model_getter
-            model = model_getter(args=args).to(device)
+            student_model = model_getter(args=args).to(device)
 
             size = 'large'
         else:    # args.where == 'local'
             from Cluster.networks.neuralNetworkSmall import ConditionalUNet
-            model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+            student_model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
             size = 'small'
 
-        model.load_state_dict(torch.load(path, map_location=device))
+        student_model.load_state_dict(torch.load(path, map_location=device))
         print(f'\nInstantiated the {size} model\n')
 
 
@@ -249,7 +243,7 @@ if __name__ == "__main__":
     if args.which == 'kac':
         from Cluster.utils.sample_kac import TorchKacConstantSampler
         
-        sampler = TorchKacConstantSampler(a=args.a, c=args.c, T=args.T, M=50000, K=4096)
+        sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
         print('\nInstantiated the kac sampler\n')
     
 
@@ -273,7 +267,7 @@ if __name__ == "__main__":
     # Sample from the model
     if args.what in ['full', 'sample']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nStarting the sampling for {args.which} with {args.sampler_diff if args.which == 'diffusion' else args.sampler_kac}\n')
+        print(f'\nStarting the sampling for {args.which} with {args.sampler}\n')
 
         from Cluster.sampling import sample_wrapper
 
@@ -305,7 +299,7 @@ if __name__ == "__main__":
         from Cluster.sampling import sample_wrapper
         args.num_steps = args.num_student_steps
 
-        sample_wrapper(args=args, model=student_model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=student_save_path, mode='student')
+        sample_wrapper(args=args, model=student_model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=student_save_path)
 
 
     # Evaluate the model using FID
