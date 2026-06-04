@@ -22,6 +22,12 @@ if __name__ == "__main__":
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
     parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
+    parser.add_argument('--training-stage2-samples', type=int, default=5000,
+                        help='lets you set a different sample size on which the fid checkpoints are calculated')
+    parser.add_argument('--training-stage1-patience', type=float, default=0.1,
+                        help='lets you set a different percentage for loss patience. Defaults to 10perc of total epochs')
+    parser.add_argument('--training-stage2-patience', type=float, default=0.01,
+                        help='lets you set a different percentage for fid patience. Defaults to 1perc of total epochs')
     
 
     # ! sampling arguments
