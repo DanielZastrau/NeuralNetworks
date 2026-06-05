@@ -11,7 +11,7 @@ from Cluster.utils.noisifier import Noisify
 from Cluster.utils.reversals import Reversal
 
 def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns: Reversal,
-                         model_path: str = '', noisify_fns: Noisify) -> torch.nn.Module:
+                         noisify_fns: Noisify, model_path: str = '') -> torch.nn.Module:
     """Wraps together the functions and boilerplate"""    
 
     # Determine device and set up model and loss function accordingly
