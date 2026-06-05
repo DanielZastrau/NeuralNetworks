@@ -29,8 +29,8 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         # Initialize with random noise
         if args.which == 'mmd':
             from Cluster.utils.mmd import MMD
-            _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size) * args.T,
-                                    x=torch.ones(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height),
+            _, x_batch = MMD.get_noise(t=torch.ones(curr_batch_size, device=device) * args.T,
+                                    x=torch.ones((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device),
                                     b=args.mmd_b)
 
         elif args.which == 'kac':
