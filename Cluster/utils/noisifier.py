@@ -84,17 +84,17 @@ class Noisify():
     
 
     def mmd(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
-
         from Cluster.utils.mmd import MMD
 
-        # data schedule
+        # data schedule,  t.shape[B,] --> f_t.shape[B,]
         f_t = MMD.f(t=t)
 
-        # noise schedule
+        # noise schedule,  t.shape[B,] --> g_t.shape[B,]
         g_t = MMD.g(t=t)
 
         # noise at gt
         _, noise = MMD.get_noise(t=g_t, x=x0, b=self.args.mmd_b)
 
         # use that to corrupt the original sample fully
-        return f_t * x0 + noise
+        # f_t[B,] * x_0[B, channels, height, width] + noise[B, channels, height, width]
+        return f_t.view(-1, 1, 1, 1) * x0 + noise
