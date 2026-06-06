@@ -18,11 +18,12 @@ if __name__ == "__main__":
     
 
     # ! training arguments
-    parser.add_argument('--training-epochs', type=int, default=200,
+    # ! 1000 epochs to allow enough time for both patience mechanisms to terminate. This is only an upper bound
+    parser.add_argument('--training-epochs', type=int, default=1_000,
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
-    parser.add_argument('--training-batch-size', type=int, default=128,
+    parser.add_argument('--training-batch-size', type=int, default=256,
                         help='only needed for training')
-    parser.add_argument('--training-stage2-samples', type=int, default=5000,
+    parser.add_argument('--training-stage2-samples', type=int, default=5_000,
                         help='lets you set a different sample size on which the fid checkpoints are calculated')
     parser.add_argument('--training-stage1-patience', type=float, default=0.1,
                         help='lets you set a different percentage for loss patience. Defaults to 10perc of total epochs')
@@ -36,7 +37,7 @@ if __name__ == "__main__":
     parser.add_argument('--sampling-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
-    parser.add_argument('--sampling-num-steps', type=int, default=8192,
+    parser.add_argument('--sampling-num-steps', type=int, default=8_192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
     parser.add_argument('--sampling-batch-size', type=int, default=512,
                         help='specifies how many samples are to be processed at the same time. I.e. the tensor shape.')
@@ -59,9 +60,9 @@ if __name__ == "__main__":
                         help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to ee')
     parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'],
                         help='provides the possibility to set a different student sampler than ee, if not set defaults to explicit euler')
-    parser.add_argument('--distill-num-student-steps', type=int, default=1024,
+    parser.add_argument('--distill-num-student-steps', type=int, default=512,
                         help='specifies the amount of steps the student should do in order to sample, i.e. a 20-step student or a 10-step student.')
-    parser.add_argument('--distill-num-teacher-substeps', type=int, default=10,
+    parser.add_argument('--distill-num-teacher-substeps', type=int, default=16,
                         help='the amount of teacher steps the student is supposed to learn')
 
 
