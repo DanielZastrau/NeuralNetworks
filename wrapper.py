@@ -265,9 +265,11 @@ if __name__ == "__main__":
         eval_wrapper(args=args, data=data, img_path=save_path)
 
 
+        print(f'\nFinished evaluation.')
+
     if args.what in ['full', 'distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student')
+        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student.')
 
         # TODO Need to also implement distillation for all other processes, Schrödinger
         from Cluster.distillation import distillation_wrapper
@@ -275,3 +277,5 @@ if __name__ == "__main__":
             args=args, save_path=path_to_distilled_student, model_path=path_to_model,
             reversal_fns=reversal_fns, noisify_fns=noisify_fns
         )
+
+        print(f'\nFinished Distillation.')
