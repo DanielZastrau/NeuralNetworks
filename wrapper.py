@@ -83,13 +83,14 @@ if __name__ == "__main__":
     
 
     # of kac
-    parser.add_argument('--kac-a', type=float, default=9.0,
+    # * a = 900, c = 10, g(t)=t**2 as specified by "Duong et al 2025 - Telegraphers Generetive Model via Kac Flows"
+    parser.add_argument('--kac-a', type=float, default=900,
                         help='specifies the damping coefficient a of the kac process')
-    parser.add_argument('--kac-c', type=float, default=3.0,
+    parser.add_argument('--kac-c', type=float, default=10,
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
-    parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
+    parser.add_argument('--kac-g', type=str, default='opt2', choices=['opt1', 'opt2'],
                         help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
 
 
