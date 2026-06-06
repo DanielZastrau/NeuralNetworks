@@ -107,7 +107,7 @@ class DataProvider():
 
         eval_set = datasets.CIFAR10(
             root=self.args.data_dir if self.args.where == 'cluster' else './data',
-            train=False,
+            train=True,
             download=True,
             transform=transform
         )
