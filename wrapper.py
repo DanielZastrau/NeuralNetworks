@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
 
     # ! distillation arguments
-    parser.add_argument('--distill-iterations', type=int, default=100,
+    parser.add_argument('--distill-iterations', type=int, default=50_000,
                         help='sets the amount of iterations the student model should be trained for')
     parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'],
                         help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to ee')
