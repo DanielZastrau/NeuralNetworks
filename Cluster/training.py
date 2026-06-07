@@ -114,13 +114,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
     # Initialize the EMA Model with dynamic warmup
     target_decay = 0.9999
-    
-    def dynamic_ema_fn(avg_param, param, num_averaged):
-        # Scales decay from ~0.10 at step 0 to target_decay asymptotically
-        current_decay = min(target_decay, (1.0 + num_averaged) / (10.0 + num_averaged))
-        return avg_param * current_decay + param * (1.0 - current_decay)
-
-    ema_model = AveragedModel(model, device=device, multi_avg_fn=dynamic_ema_fn)
+    ema_model = AveragedModel(model, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
 
     # Setup Phase 1: Loss-based checkpointing
     best_test_loss = float('inf')
