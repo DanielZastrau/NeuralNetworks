@@ -3,14 +3,17 @@ import argparse
 import torch
 
 from Cluster.utils.sample_kac import TorchKacConstantSampler
+from Cluster.utils.dataHandling import DataProvider
 
 class LossFns():
     """Provides the loss functions such that the training framework can stay the same, currently only used in the training module"""
 
 
-    def __init__(self, args: argparse.Namespace, sampler: TorchKacConstantSampler | None):
+    def __init__(self, args: argparse.Namespace, sampler: TorchKacConstantSampler | None,
+                 data: DataProvider):
         self.args = args
         self.sampler = sampler
+        self.data = data
 
         if args.which == 'diffusion':
             self.loss = self.diffusion
@@ -26,8 +29,6 @@ class LossFns():
         from Cluster.utils.diffusion import Diffusion
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
         x_0 = mini_batch
 
         # sample time steps t uniformly from [eps, 1)
@@ -36,10 +37,7 @@ class LossFns():
 
         # draw standard gaussian noise matching the shape of x_0
         noise = torch.randn_like(x_0)
-
-        # compute b(t)
-        b_t = Diffusion.b(t)
-        b_t = b_t.view(-1, 1, 1, 1)  # Reshape b_t to (batch_size, 1, 1, 1) for broadcasting
+        b_t = Diffusion.b(t).view(-1, 1, 1, 1)
 
         # compute x
         x_corrupted = b_t * x_0 + torch.sqrt(1 - b_t**2) * noise
@@ -47,14 +45,19 @@ class LossFns():
         # simplyfiy the target
         # target = - noise / torch.sqrt(1 - b_t**2)
 
-        # simplyfiy the target even further and only learn the noise and scale to the score later during inference
+        # simplyfiy the target even further and only learn the noise and scale 
+        # to the score later during inference
         target = noise
 
         # evaluate the neural network score prediction
-        pred = model(x_corrupted, t)
+        # ! scale the time up to [0, 1000.0] since the unet time embedding
+        # ! expects this time scale otherwise the time embedding will basically
+        # ! look the same at t=0.01 and t=0.99
+        with torch.amp.autocast(device_type=device.type):
+            pred = model(x_corrupted, t * 1000.0)
 
         # compute empirical loss
-        loss = torch.nn.functional.mse_loss(pred, target)
+        loss = torch.nn.functional.mse_loss(pred.float(), target)
 
         return loss
     
@@ -82,7 +85,7 @@ class LossFns():
         
         # compute x corrupted -----
         # Sample noise using g(t)
-        tau: torch.Tensor = self.sampler.sample(g_t, dim=3 * 32 * 32).to(device).view(B, -1)
+        tau: torch.Tensor = self.sampler.sample(g_t, dim=self.data.data_dims.total_dimension).to(device).view(B, -1)
 
         # use it to corrupt x0 fully, according to the mean reverting process
         x_corrupted = f_t * x_0 + tau
@@ -95,15 +98,23 @@ class LossFns():
             velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t, a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
 
         # Model is conditioned on original time t
-        pred = model(x_corrupted.view(B, 3, 32, 32), t.squeeze(1)).view(B, -1)
-        loss = torch.nn.functional.mse_loss(pred, velo + drift)
+        with torch.amp.autocast(device_type=device.type):
+            pred = model(x_corrupted.view(
+                B,
+                self.data.data_dims.channels,
+                self.data.data_dims.height,
+                self.data.data_dims.width
+            ), t.squeeze(1) * 1000.0).view(B, -1)
+
+        loss = torch.nn.functional.mse_loss(pred.float(), velo + drift)
 
         return loss
     
 
     def mmd(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
-
         from Cluster.utils.mmd import MMD
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         x0 = mini_batch
 
@@ -130,7 +141,9 @@ class LossFns():
         target = df_t * x0 + dg_t * pre_noise / torch.exp(g_t / self.args.mmd_b)
 
         # compute the mse loss
-        pred = model(x_corrupted, t)
-        loss = torch.nn.functional.mse_loss(pred, target)
+        with torch.amp.autocast(device_type=device.type):
+            pred = model(x_corrupted, t * 1000.0)
+
+        loss = torch.nn.functional.mse_loss(pred.float(), target)
 
         return loss

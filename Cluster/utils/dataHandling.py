@@ -6,7 +6,7 @@ import argparse
 import torch
 from torchvision import datasets    # type: ignore
 from torch.utils.data import DataLoader, Subset, Dataset
-from torchvision.transforms import v2, Compose, Resize, ToTensor    # type: ignore
+from torchvision.transforms import v2, Compose, ToTensor, Normalize    # type: ignore
 
 from PIL import Image
 
@@ -97,13 +97,15 @@ class DataProvider():
         return train_dataloader, test_dataloader
 
 
-    def get_dataset_for_eval(self, path_to_generated_samples: str) -> tuple[DataLoader, DataLoader]:
+    def get_dataset_for_full_eval(self) -> DataLoader:
+        from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
-        # InceptionV3 operates optimally on 299x299 images
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
         transform = Compose([
-            Resize((299, 299)),
-            ToTensor() 
-        ])
+                ToTensor(),
+                Normalize((0.5,) * 3, (0.5,) * 3),
+            ])
 
         eval_set = datasets.CIFAR10(
             root=self.args.data_dir if self.args.where == 'cluster' else './data',
@@ -113,22 +115,52 @@ class DataProvider():
         )
 
         # Validate requested sample size
-        if len(eval_set) < self.args.sampling_num_samples:
-            raise ValueError(f"Requested {self.args.sampling_num_samples} samples, but CIFAR10 test set only has {len(eval_set)}.")
-        eval_set = Subset(eval_set, range(self.args.sampling_num_samples))    # type: ignore
+        if len(eval_set) < self.args.eval_num_samples:
+            raise ValueError(f"Requested {self.args.eval_num_samples} samples, but CIFAR10 test set only has {len(eval_set)}.")
+        eval_set = Subset(eval_set, range(self.args.eval_num_samples))    # type: ignore
 
-        dataset_loader = DataLoader(eval_set, batch_size=128, num_workers=4)    # type: ignore
+        dataset_loader = DataLoader(eval_set, batch_size=512, num_workers=4)    # type: ignore
 
+        real_images = []
+        for (imgs, _) in dataset_loader:
+            real_images.append(to_uint8_rgb(imgs.to(device).cpu()))
+            if sum(x.size(0) for x in real_images) >= self.args.eval_num_samples:
+                break
+        real_images = torch.cat(real_images)[:self.args.eval_num_samples].cpu()
+        real_ds = Uint8Dataset(real_images)
 
-        generated_set_full = FlatDirectoryDataset(directory=path_to_generated_samples, transform=transform)
+        return real_ds
 
-        if len(generated_set_full) < self.args.sampling_num_samples:
-            raise ValueError(f"Requested {self.args.sampling_num_samples} samples, but fake directory only has {len(generated_set_full)}.")
+    
+    def get_dataset_for_periodic_eval(self) -> DataLoader:
+        from Cluster.utils.uint8_utils import to_uint8_rgb, Uint8Dataset
 
-        # Slice down to exactly `num_samples`
-        generated_set = Subset(generated_set_full, range(self.args.sampling_num_samples))    # type: ignore
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        generated_set_loader = DataLoader(generated_set, batch_size=128, num_workers=4)    # type: ignore
+        transform = Compose([
+                ToTensor(),
+                Normalize((0.5,) * 3, (0.5,) * 3),
+            ])
 
+        real_ds = datasets.CIFAR10(
+            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
+            train=True,
+            download=True,
+            transform=transform
+        )
 
-        return dataset_loader, generated_set_loader
+        real_ds_loader = DataLoader(
+            real_ds,
+            batch_size=self.args.training_batch_size * 4,
+            shuffle=False,
+            num_workers=1
+        )
+
+        real_images = []
+        for (imgs, _) in real_ds_loader:
+            real_images.append(to_uint8_rgb(imgs.to(device).cpu()))
+            if sum(x.size(0) for x in real_images) >= self.args.training_stage2_samples:
+                break
+        real_images = torch.cat(real_images)[:self.args.training_stage2_samples].cpu()
+        real_ds = Uint8Dataset(real_images)
+        return real_ds

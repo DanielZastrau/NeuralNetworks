@@ -1,12 +1,10 @@
 import argparse
 import copy
-import os
-import tempfile
 
 import torch
+import torch_fidelity
 from torch.optim.lr_scheduler import LinearLR, ConstantLR, SequentialLR
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
-from torchvision.utils import save_image
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.lossFunctions import LossFns
@@ -14,9 +12,9 @@ from Cluster.utils.stages import Stages
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.reversals import Reversal
 from Cluster.sampling import sample
-from Cluster.eval import evaluate_fid
+from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
-def train(args: argparse.Namespace, dataloader,
+def train(x_batch: torch.Tensor,
           model: torch.nn.Module, ema_model: AveragedModel,
           loss_fn: LossFns, optimizer: torch.optim.Optimizer,
           scheduler: torch.optim.lr_scheduler.LRScheduler, scaler: torch.amp.GradScaler):
@@ -25,38 +23,33 @@ def train(args: argparse.Namespace, dataloader,
     device = torch.device(device_type)
 
     model.train()
-    train_loss = 0
+    ema_model.train()
 
-    for X, _ in dataloader:
+    x_batch = x_batch.to(device)
+    optimizer.zero_grad()
 
-        X = X.to(device)
-        optimizer.zero_grad()
+    loss = loss_fn.loss(model=model, mini_batch=x_batch)
 
-        # Runs the forward pass in mixed precision
-        with torch.amp.autocast(device_type=device_type):
-            loss = loss_fn.loss(model=model, mini_batch=X)
+    # Scales the loss and completes the backward pass
+    scaler.scale(loss).backward()
 
-        # Scales the loss and completes the backward pass
-        scaler.scale(loss).backward()
+    # Unscale gradients before clipping
+    scaler.unscale_(optimizer)
+    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-        # Unscale gradients before clipping
-        scaler.unscale_(optimizer)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        # Step optimizer and scaler
-        scaler.step(optimizer)
-        scaler.update()
+    # Step optimizer and scaler
+    scale_before = scaler.get_scale()
+    
+    # Step optimizer and scaler
+    scaler.step(optimizer)
+    scaler.update()
+    
+    # Only step the scheduler if the optimizer actually updated the weights
+    if scaler.get_scale() >= scale_before:
         scheduler.step()
 
-        # Update EMA model parameters
-        ema_model.update_parameters(model)
-
-        # Detach removes the tensor from the computation graph to save memory, 
-        # but keeps the value on the GPU, avoiding CPU synchronization.
-        train_loss += loss.detach()
-
-        if args.proof_of_concept:
-            break
+    # Update EMA model parameters
+    ema_model.update_parameters(model)
 
 
 def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
@@ -80,81 +73,6 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
     return avg_test_loss
 
 
-def compute_fid_checkpoint(args: argparse.Namespace, model: torch.nn.Module, data: DataProvider,
-                           reversal_fns: Reversal, sampler: TorchKacConstantSampler, temp_dir: str) -> float:
-    original_num_samples = args.sampling_num_samples
-    args.sampling_num_samples = 5000
-
-    try:
-        samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
-        samples = (samples + 1.0) / 2.0
-        samples = samples.clamp(0.0, 1.0)
-
-        samples_path = os.path.join(temp_dir, "checkpoint_samples")
-        os.makedirs(samples_path, exist_ok=True)
-
-        for i, img in enumerate(samples):
-            img_path = os.path.join(samples_path, f"sample_{i:05d}.png")
-            save_image(img, img_path)
-
-        fid_score = evaluate_fid(args=args, data=data, path_to_generated_samples=samples_path)
-        return fid_score
-
-    finally:
-        args.sampling_num_samples = original_num_samples
-
-
-def check_phase1_halting(epochs_no_improve: int, patience: int, epoch: int, training_stage: Stages) -> tuple[bool, int]:
-    epochs_no_improve += 1
-    print(f"Loss early stopping counter: {epochs_no_improve} out of {patience}")
-
-    if epochs_no_improve >= patience:
-        print(f"\n{'='*80}")
-        print(f"Phase 1 complete: Loss patience reached after {epoch+1} epochs.")
-        print(f"Transitioning to Phase 2: FID-based periodic checkpointing...")
-        print(f"{'='*80}\n")
-        training_stage.increment()
-        return True, epochs_no_improve
-
-    return False, epochs_no_improve
-
-
-def check_phase2_halting(fid_score: float, best_fid_score: float, fid_no_improve_count: int,
-                        epoch: int, training_stage: Stages) -> tuple[bool, float, int]:
-    if fid_score < best_fid_score:
-        best_fid_score = fid_score
-        fid_no_improve_count = 0
-        print(f"FID improved! New best: {best_fid_score:.4f}")
-        return False, best_fid_score, fid_no_improve_count
-    else:
-        fid_no_improve_count += 1
-        print(f"FID no improvement counter: {fid_no_improve_count} out of 5")
-
-        if fid_no_improve_count >= 5:
-            print(f"\n{'='*80}")
-            print(f"Phase 2 complete: FID has not improved for 5 consecutive checkpoints.")
-            print(f"Halting training at epoch {epoch+1}.")
-            print(f"{'='*80}\n")
-            training_stage.increment()
-            return True, best_fid_score, fid_no_improve_count
-
-        return False, best_fid_score, fid_no_improve_count
-
-
-def save_best_model(save_path: str, best_fid_model_state, best_fid_model_type: str, best_fid_score: float,
-                   best_model_state, best_model_type: str, best_test_loss: float, model: torch.nn.Module):
-    if best_fid_model_state is not None:
-        torch.save(best_fid_model_state, save_path)
-        print(f'Saving Phase 2 best model ({best_fid_model_type} weights, FID: {best_fid_score:.4f})')
-    elif best_model_state is not None:
-        torch.save(best_model_state, save_path)
-        print(f'Saving Phase 1 best model ({best_model_type} weights, loss: {best_test_loss:.4f})')
-    else:
-        uncompiled_model = getattr(model, "_orig_mod", model)
-        torch.save(uncompiled_model.state_dict(), save_path)
-        print('Saving the active model (fallback)')
-
-
 def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                      reversal_fns: Reversal, model: torch.nn.Module,
                      data: DataProvider, save_path: str):
@@ -163,10 +81,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Define step counts
-    epochs = args.training_epochs
-    batches_per_epoch = len(train_dataloader)    # type: ignore
-    total_steps = epochs * batches_per_epoch
-    warmup_steps = int(total_steps * 0.05)
+    warmup_steps = int(args.training_iterations * 0.05)
 
     # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
@@ -197,113 +112,204 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     # Initialize the Gradient Scaler for AMP
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Initialize the EMA Model
-    ema_decay = 0.9999
-    ema_avg_fn = get_ema_multi_avg_fn(ema_decay)
-    ema_model = AveragedModel(model, device=device, multi_avg_fn=ema_avg_fn)
+    # Initialize the EMA Model with dynamic warmup
+    target_decay = 0.9999
+    
+    def dynamic_ema_fn(avg_param, param, num_averaged):
+        # Scales decay from ~0.10 at step 0 to target_decay asymptotically
+        current_decay = min(target_decay, (1.0 + num_averaged) / (10.0 + num_averaged))
+        return avg_param * current_decay + param * (1.0 - current_decay)
+
+    ema_model = AveragedModel(model, device=device, multi_avg_fn=dynamic_ema_fn)
 
     # Setup Phase 1: Loss-based checkpointing
-    patience = max(1, int(epochs * args.training_stage1_patience))
     best_test_loss = float('inf')
-    epochs_no_improve = 0
+    counter_no_improve = 0
     best_model_state = None
     best_model_type = "None"
 
     # Setup Phase 2: FID-based checkpointing
-    checkpoint_interval = max(1, int(epochs * args.training_stage2_patience))
     best_fid_score = float('inf')
     fid_no_improve_count = 0
     best_fid_model_state = None
     best_fid_model_type = "None"
 
+    # --- Setup for periodic FID during training ---
+    real_ds = data.get_dataset_for_periodic_eval()
+    stats_real_ds = torch_fidelity.calculate_metrics(
+        input1=real_ds,
+        input2=real_ds,
+        batch_size=512,
+        fid=True,
+        cuda=(device == 'cuda'),
+        verbose=False,
+        stats=True
+    )
+
+    # initiate the sampler if needed    
+    if args.which == 'kac':
+        sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
+    else:
+        sampler = None
+
+
+    # train the model
     training_stage = Stages()
-    temp_checkpoint_dir = tempfile.mkdtemp()
+    train_iter = iter(train_dataloader)
+    for iteration in range(args.training_iterations):
+        if iteration % 1000 == 0:
+            print(f'iteration  {iteration}----------------------------')
 
-    try:
-        if args.which == 'kac':
-            sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
-        else:
-            sampler = None
+        # the iterator does not need to be initialized every time
+        try:
+            x_batch, _ = next(train_iter)
+        except StopIteration:
+            train_iter = iter(train_dataloader)
+            x_batch, _ = next(train_iter)
 
-        # train the model
-        for epoch in range(epochs):
-            print(f"Epoch {epoch+1}\n-------------------------------")
+        train(x_batch=x_batch, model=model,
+                ema_model=ema_model, loss_fn=loss_fn,
+                optimizer=optimizer, scheduler=scheduler,
+                scaler=scaler)
 
-            train(args, train_dataloader, model, ema_model, loss_fn, optimizer, scheduler, scaler)
 
-            if training_stage.stage == 'phase1':
-                # evaluate both the active model and the ema model
-                active_loss = test(args, test_dataloader, model, loss_fn)
-                ema_loss = test(args, test_dataloader, ema_model, loss_fn)
+        # evluate the model periodically on the loss function (computationally faster than generating samples)
+        if training_stage.stage == 'phase1' and (iteration + 1) % args.training_stage1_period == 0:
+            
+            # evaluate just the ema model
+            ema_loss = test(args, test_dataloader, ema_model, loss_fn)
 
-                # Gate on the superior configuration for this epoch
-                current_best_loss = min(active_loss, ema_loss)
+            # Early Stopping Logic (Phase 1) -------------------------------------------------------
+            if ema_loss < best_test_loss:
+                best_test_loss = ema_loss
+                counter_no_improve = 0
 
-                # Early Stopping Logic (Phase 1) -------------------------------------------------------
-                if current_best_loss < best_test_loss:
-                    best_test_loss = current_best_loss
-                    epochs_no_improve = 0
+                # Extract and store the state dict of the superior model
+                uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                best_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                best_model_type = "EMA"
+                torch.save(best_model_state, save_path)
+                print(f"saved best model to:  {save_path}")
+            else:
+                counter_no_improve += 1
+                print(f"Loss early stopping counter: {counter_no_improve} out of {args.training_stage1_patience}")
 
-                    # Extract and store the state dict of the superior model
-                    if active_loss < ema_loss:
-                        uncompiled_model = getattr(model, "_orig_mod", model)
-                        best_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                        best_model_type = "Active"
-                    else:
-                        uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                        best_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                        best_model_type = "EMA"
-                else:
-                    halted, epochs_no_improve = check_phase1_halting(epochs_no_improve, patience, epoch, training_stage)
+                if counter_no_improve >= args.training_stage1_patience:
+                    print(f"\n{'='*80}")
+                    print(f"Phase 1 complete: Loss patience reached after {iteration+1} iterations.")
+                    print(f"Transitioning to Phase 2: FID-based periodic checkpointing...")
+                    print(f"{'='*80}\n")
+                    training_stage.increment()
 
-                    if halted:
-                        print(f"\nComputing baseline FID score for Phase 2...")
-                        try:
-                            baseline_fid = compute_fid_checkpoint(args, ema_model.module, data, reversal_fns, sampler, temp_checkpoint_dir)
-                            best_fid_score = baseline_fid
-                            print(f"Baseline FID Score: {best_fid_score:.4f}\n")
-
-                            uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                            best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                            best_fid_model_type = "EMA"
-                        except Exception as e:
-                            print(f"Warning: Baseline FID computation failed: {e}")
-                            print("Proceeding to Phase 2 without baseline FID...\n")
-
-            elif training_stage.stage == 'phase2':
-
-                # Phase 2: Periodic FID-based checkpointing
-                if (epoch + 1) % checkpoint_interval == 0:
-                    print(f"\nPhase 2 checkpoint at epoch {epoch+1}/{epochs}")
+                    print(f"\nComputing baseline FID score for Phase 2...")
                     try:
-                        fid_score = compute_fid_checkpoint(args, ema_model.module, data, reversal_fns, sampler, temp_checkpoint_dir)
-                        print(f"FID Score (5k samples): {fid_score:.4f}")
+                        # sample images from the ema model to calculate a reduced fid score
+                        ema_model.eval()
+                        samples = sample(
+                            args=args,
+                            model=ema_model,
+                            data=data,
+                            sampler=sampler,
+                            num_samples=args.training_stage2_samples,
+                            reversal_fns=reversal_fns
+                        )
+                        generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
-                        halted, best_fid_score, fid_no_improve_count = check_phase2_halting(fid_score, best_fid_score, fid_no_improve_count, epoch, training_stage)
+                        # calculate the fid score
+                        metrics = torch_fidelity.calculate_metrics(
+                            input1_stats=stats_real_ds,
+                            input2=generated_ds,
+                            batch_size=256,
+                            fid=True,
+                            cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
+                            verbose=False,
+                        )
+                        baseline_fid_score = metrics['frechet_inception_distance']
+                        best_fid_score = baseline_fid_score
+                        print(f"Baseline FID Score: {best_fid_score:.4f}\n")
 
-                        if fid_no_improve_count == 0:
-                            uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                            best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                            best_fid_model_type = "EMA"
+                        # copy the current model
+                        uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                        best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                        best_fid_model_type = "EMA"
+                        torch.save(best_fid_model_state, save_path)
+                        print(f"saved best model to:  {save_path}")
 
-                        if halted:
-                            break
                     except Exception as e:
-                        print(f"Warning: FID computation failed at epoch {epoch+1}: {e}")
-                        print("Continuing training without FID checkpoint...")
+                        print(f"Warning: Baseline FID computation failed: {e}")
+                        print("Proceeding to Phase 2 without baseline FID...\n")
 
-            if training_stage.stage == 'halt':
-                break
 
-            if args.proof_of_concept:
-                break
+        # If loss patience has already been reached, evaluate the model periodically on the fid score for small sample size
+        elif training_stage.stage == 'phase2' and (iteration + 1) % args.training_stage2_period == 0:
+                
+            print(f"\nPhase 2 checkpoint at epoch {iteration+1}/{args.training_iterations}")
+            try:
+                # sample images from the ema model to calculate a reduced fid score
+                ema_model.eval()
+                samples = sample(
+                    args=args,
+                    model=ema_model,
+                    data=data,
+                    sampler=sampler,
+                    num_samples=args.training_stage2_samples,
+                    reversal_fns=reversal_fns
+                )
+                generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
-        print("Done!")
+                # calculate the fid score
+                metrics = torch_fidelity.calculate_metrics(
+                    input1_stats=stats_real_ds,
+                    input2=generated_ds,
+                    batch_size=256,
+                    fid=True,
+                    cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
+                    verbose=False,
+                )
+                fid_score = metrics['frechet_inception_distance']
 
-        save_best_model(save_path, best_fid_model_state, best_fid_model_type, best_fid_score,
-                       best_model_state, best_model_type, best_test_loss, model)
+                print(f"FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 
-    finally:
-        import shutil
-        if os.path.exists(temp_checkpoint_dir):
-            shutil.rmtree(temp_checkpoint_dir)
+                if fid_score < best_fid_score:
+                    best_fid_score = fid_score
+                    fid_no_improve_count = 0
+                    print(f"FID improved! New best: {best_fid_score:.4f}")
+
+                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                    best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                    best_fid_model_type = "EMA"
+                    torch.save(best_fid_model_state, save_path)
+                    print(f"saved best fid model to:  {save_path}")
+
+                else:
+                    fid_no_improve_count += 1
+                    print(f"FID no improvement counter: {fid_no_improve_count} out of {args.training_stage2_patience}")
+
+                    if fid_no_improve_count >= args.training_stage2_patience:
+                        print(f"\n{'='*80}")
+                        print(f"Phase 2 complete: FID has not improved for {args.training_stage2_patience} consecutive checkpoints.")
+                        print(f"Halting training at iteration {iteration+1}.")
+                        print(f"{'='*80}\n")
+                        training_stage.increment()
+
+            except Exception as e:
+                print(f"Warning: FID computation failed at iteration {iteration+1}: {e}")
+                print("Continuing training without FID checkpoint...")
+
+
+        # If loss and fid patience have been reached, halt
+        if training_stage.stage == 'halt':
+            break
+
+    print("Done!")
+
+    if best_fid_model_state is not None:
+        torch.save(best_fid_model_state, save_path)
+        print(f'Saving Phase 2 best model ({best_fid_model_type} weights, FID: {best_fid_score:.4f})')
+    elif best_model_state is not None:
+        torch.save(best_model_state, save_path)
+        print(f'Saving Phase 1 best model ({best_model_type} weights, loss: {best_test_loss:.4f})')
+    else:
+        uncompiled_model = getattr(model, "_orig_mod", model)
+        torch.save(uncompiled_model.state_dict(), save_path)
+        print('Saving the active model (fallback)')

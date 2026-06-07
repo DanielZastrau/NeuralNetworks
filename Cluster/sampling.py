@@ -14,16 +14,16 @@ from Cluster.utils.reversals import Reversal
 @torch.inference_mode()
 def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
-                    sampler: TorchKacConstantSampler | None) -> torch.Tensor:
+                    sampler: TorchKacConstantSampler | None, num_samples: int) -> torch.Tensor:
 
     batch_size = args.sampling_batch_size
     device = next(model.parameters()).device
 
     all_samples = []
 
-    for i in range(0, args.sampling_num_samples, batch_size):
-        curr_batch_size = min(batch_size, args.sampling_num_samples - i)
-        if i % 200 == 0:
+    for i in range(0, num_samples, batch_size):
+        curr_batch_size = min(batch_size, num_samples - i)
+        if i % 10 == 0:
             print(f'curr batch:  {i}')
         
         # Initialize with random noise
@@ -46,13 +46,9 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
         time_steps = torch.linspace(args.T, args.time_truncation, args.sampling_num_steps, device=device)
-        dt = (args.T - args.time_truncation) / args.sampling_num_steps
+        dt = (args.T - args.time_truncation) / (args.sampling_num_steps - 1)
 
         for step_idx, t_val in enumerate(time_steps):
-            
-            if step_idx % 100 == 0 or len(time_steps) - step_idx <= 20:
-                print(f"Step {step_idx}/{args.sampling_num_steps}", end='\r')
-
             # Broadcast the continuous time value to the batch size
             t = torch.ones(curr_batch_size, device=device) * t_val
             
@@ -90,7 +86,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
     """
 
 
-    samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler)
+    samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler, num_samples=args.sampling_num_samples)
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
     samples = (samples + 1.0) / 2.0
