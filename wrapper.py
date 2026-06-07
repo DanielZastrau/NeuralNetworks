@@ -47,6 +47,8 @@ if __name__ == "__main__":
     parser.add_argument('--sampling-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
+    # ! in the case of kac this will be overwritten to 100 steps afterwards to match
+    # * 2025 - Duong et al - Telegraphers Generative Model via Kac Flows
     parser.add_argument('--sampling-num-steps', type=int, default=8_192,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
     parser.add_argument('--sampling-batch-size', type=int, default=512,
@@ -79,6 +81,7 @@ if __name__ == "__main__":
                         help='the amount of teacher steps the student is supposed to learn')
     parser.add_argument('--distill-lr', type=float, default=2e-4,
                         help='lets you set the learning rate for the distillation algorithm')
+
 
     # ! general arguments
     parser.add_argument('--model', type=str,
@@ -267,7 +270,7 @@ if __name__ == "__main__":
 
 
     # Sample from the model
-    if args.what in ['full', 'sample', 'train+eval']:
+    if args.what in ['sample']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
 
@@ -286,7 +289,7 @@ if __name__ == "__main__":
 
         print(f'\nFinished evaluation.')
 
-    if args.what in ['full', 'distill']:
+    if args.what in ['distill']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student.')
 
