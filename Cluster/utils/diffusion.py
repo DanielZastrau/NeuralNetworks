@@ -44,7 +44,7 @@ class Diffusion:
         g_t = Diffusion.g(t).view(-1, 1, 1, 1)
         b_t = Diffusion.b(t).view(-1, 1, 1, 1)
         
-        pred_noise = model(x, t)
+        pred_noise = model(x, t * 1000.0)
 
         # Numerical safeguard: prevent division by zero or sqrt of negative numbers
         variance = torch.clamp(1 - b_t**2, min=1e-8)

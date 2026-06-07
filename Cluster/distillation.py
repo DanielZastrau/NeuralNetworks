@@ -47,7 +47,10 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
         student = torch.compile(student)
 
 
-    optimizer = torch.optim.AdamW(student.parameters(), lr=2e-4)
+    optimizer = torch.optim.AdamW(
+        student.parameters(),
+        lr=args.distill_lr
+    )
 
     if args.which == 'diffusion':
         # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
@@ -58,12 +61,16 @@ def distillation_wrapper(args: argparse.Namespace, save_path: str, reversal_fns:
     linspace_of_endpoints = torch.linspace(1, eps, args.distill_num_student_steps, dtype=torch.float32, device=device)
     delta_t = 1 / args.distill_num_student_steps
 
-
+    distill_iter = iter(train_dataloader)
     for iteration in range(args.distill_iterations):
         optimizer.zero_grad()
 
         # sample a batch from the dataset
-        x_batch, _ = next(iter(train_dataloader))
+        try:
+            x_batch, _ = next(distill_iter)
+        except StopIteration:
+            distill_iter = iter(train_dataloader)
+            x_batch, _ = next(distill_iter)
         x_batch = x_batch.to(device)
 
         # sample a batch of endpoint time steps

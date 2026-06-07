@@ -1,9 +1,10 @@
 import argparse
 
 import torch
+from torchdiffeq import odeint
 
 from Cluster.utils.dataHandling import DataProvider
-
+from Cluster.utils.diffusion import Diffusion
 
 class Reversal():
     """This class implements the different reversal methods for the models, it is called by the sampling module as well as the distillation module
@@ -50,7 +51,7 @@ class Reversal():
     def student_explicit_euler(self, model: torch.nn.Module, x_batch: torch.Tensor, 
                                t_batch: torch.Tensor, dt: float) -> torch.Tensor:
         """Integrates the student over [t, t - dt] using a single explicit step."""
-        return x_batch - model(x_batch, t_batch) * dt
+        return x_batch - model(x_batch, t_batch * 1000.0) * dt
     
     # =============================================================================================
     # explicit solver implementations
@@ -72,10 +73,9 @@ class Reversal():
             for _ in range(num_substeps):
                 
                 if self.args.which == 'diffusion':
-                    from Cluster.utils.diffusion import Diffusion
                     v = Diffusion.velocity(t=t_curr, x=x_curr, model=model)
                 else:
-                    v = model(x_curr, t_curr)
+                    v = model(x_curr, t_curr * 1000.0)
                 x_curr = x_curr - v * dt_sub
                 t_curr = t_curr - dt_sub
                 
@@ -94,19 +94,17 @@ class Reversal():
                 # Step 1: Evaluate at t
 
                 if self.args.which == 'diffusion':
-                    from Cluster.utils.diffusion import Diffusion
                     v1 = Diffusion.velocity(t=t_curr, x=x_curr, model=model)
                 else:
-                    v1 = model(x_curr, t_curr)
+                    v1 = model(x_curr, t_curr * 1000.0)
                 
                 # Step 2: Evaluate at midpoint
                 x_mid = x_curr - v1 * (dt_sub / 2)
                 t_mid = t_curr - (dt_sub / 2)
                 if self.args.which == 'diffusion':
-                    from Cluster.utils.diffusion import Diffusion
                     v2 = Diffusion.velocity(t=t_mid, x=x_mid, model=model)
                 else:
-                    v2 = model(x_mid, t_mid)
+                    v2 = model(x_mid, t_mid * 1000.0)
                 
                 # Full step using midpoint velocity
                 x_curr = x_curr - v2 * dt_sub
@@ -127,7 +125,6 @@ class Reversal():
         This is the Euler-Maruyama Scheme also used to solve the SDE formulation of the reverse process.
         """
         # * Euler Maruyama Scheme as described in "Song et al 2021"
-        from Cluster.utils.diffusion import Diffusion
 
         # Safeguard: Vectorized clipping of dt to ensure t_start - dt >= time_truncation
         if not isinstance(dt, torch.Tensor):
@@ -152,7 +149,7 @@ class Reversal():
                 b_t = Diffusion.b(t_curr).view(-1, 1, 1, 1)
 
                 # Predict score using continuous time
-                pred_noise = model(x_curr, t_curr)
+                pred_noise = model(x_curr, t_curr * 1000.0)
 
                 # Need to clamp the variance to prevent a division by zero which will throw NaNs in pytorch
                 # Because otherwise for small values of t the difference between 1 and b_t falls below the
@@ -185,8 +182,6 @@ class Reversal():
         where t_end = self.args.time_truncation for diffusion and 0 for kac
         
         Cannot be used in distillation since distillation needs a fixed timestep solver"""
-
-        from torchdiffeq import odeint
 
         device = next(model.parameters()).device
 
@@ -239,8 +234,6 @@ class Reversal():
             self.min = min_t
 
         def forward(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
-            from Cluster.utils.diffusion import Diffusion
-
             self.nfe += 1
 
             velocity = Diffusion.velocity(t=t, x=x, model=self.model)
@@ -278,7 +271,7 @@ class Reversal():
             t_vec = torch.full((B,), float(t), device=x.device)
             
             # Predict the velocity field
-            v = self.model(x_img, t_vec)
+            v = self.model(x_img, t_vec * 1000.0)
                 
             # Flatten back to match the solver's state tracking configuration
             return v.view(x.shape)

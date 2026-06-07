@@ -19,16 +19,26 @@ if __name__ == "__main__":
 
     # ! training arguments
     # ! 1000 epochs to allow enough time for both patience mechanisms to terminate. This is only an upper bound
-    parser.add_argument('--training-epochs', type=int, default=1_000,
+    # * We adopt the training protocoll of "2025 - Duong et al - Telegraphers" which just trains for 400k iterations
+    parser.add_argument('--training-iterations', type=int, default=400_000,
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
-    parser.add_argument('--training-batch-size', type=int, default=256,
+    # * batch sizes of 128 seem to be the standard, see:
+    # * "2025 - Duong et al - Telegraphers"
+    # * "2025 - Han et al DistillKac"
+    parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
-    parser.add_argument('--training-stage2-samples', type=int, default=5_000,
+    
+    # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
+    parser.add_argument('--training-stage1-period', type=int, default=1000,
+                        help='every x iterations the model is going to be evaluated on the test set')
+    parser.add_argument('--training-stage1-patience', type=int, default=40,
+                        help='allow for x-many non improvements of loss')
+    parser.add_argument('--training-stage2-period', type=int, default=1000,
+                        help='every x iterations the model is going to be evaluated on the fid score')
+    parser.add_argument('--training-stage2-patience', type=int, default=40,
+                        help='allow for x-many non improvements of fid score')
+    parser.add_argument('--training-stage2-samples', type=int, default=2_000,
                         help='lets you set a different sample size on which the fid checkpoints are calculated')
-    parser.add_argument('--training-stage1-patience', type=float, default=0.1,
-                        help='lets you set a different percentage for loss patience. Defaults to 10perc of total epochs')
-    parser.add_argument('--training-stage2-patience', type=float, default=0.01,
-                        help='lets you set a different percentage for fid patience. Defaults to 1perc of total epochs')
     
 
     # ! sampling arguments
@@ -41,6 +51,8 @@ if __name__ == "__main__":
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
     parser.add_argument('--sampling-batch-size', type=int, default=512,
                         help='specifies how many samples are to be processed at the same time. I.e. the tensor shape.')
+    parser.add_argument('--sampling-num-samples', type=int, default=50_000,
+                        help='only needed if sampler_mode is set to "set", specifies how many samples are to be generated')
 
     # configuration of the adaptive solver RK45
     parser.add_argument('--sampling-rel-tol', type=float, default=1e-4,
@@ -48,9 +60,10 @@ if __name__ == "__main__":
     parser.add_argument('--sampling-abs-tol', type=float, default=1e-4,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
 
-    # ! dual use for sampling and evaluating
-    parser.add_argument('--sampling-num-samples', type=int, default=50_000,
-                        help='only needed if sampler_mode is set to "set", specifies how many samples are to be generated')
+
+    # ! eval arguments
+    parser.add_argument('--eval-num-samples', type=int, default=50_000,
+                        help='how many samples the fid is supposed to be calculated on')
 
 
     # ! distillation arguments
@@ -64,7 +77,8 @@ if __name__ == "__main__":
                         help='specifies the amount of steps the student should do in order to sample, i.e. a 20-step student or a 10-step student.')
     parser.add_argument('--distill-num-teacher-substeps', type=int, default=16,
                         help='the amount of teacher steps the student is supposed to learn')
-
+    parser.add_argument('--distill-lr', type=float, default=2e-4,
+                        help='lets you set the learning rate for the distillation algorithm')
 
     # ! general arguments
     parser.add_argument('--model', type=str,
@@ -84,14 +98,15 @@ if __name__ == "__main__":
     
 
     # of kac
-    # * a = 900, c = 10, g(t)=t**2 as specified by "Duong et al 2025 - Telegraphers Generetive Model via Kac Flows"
-    parser.add_argument('--kac-a', type=float, default=900,
+    # * a = 25, c = 2, g(t)=t as specified by "2025 - Duong et al - Telegraphers Generetive Model via Kac Flows" as the best parameters
+    # * these are also used by "2025 - Han et al - DistillKac"
+    parser.add_argument('--kac-a', type=float, default=25,
                         help='specifies the damping coefficient a of the kac process')
-    parser.add_argument('--kac-c', type=float, default=10,
+    parser.add_argument('--kac-c', type=float, default=2,
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
-    parser.add_argument('--kac-g', type=str, default='opt2', choices=['opt1', 'opt2'],
+    parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
                         help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
 
 
@@ -124,16 +139,15 @@ if __name__ == "__main__":
         args.sampling_num_samples = 64
 
     if args.which == 'kac':
+        # * as was done in "2025 - Duong et al - Telegraphers"
         args.time_truncation = 0
+
+        # * as was done in "2025 - Duong et al - Telegraphers"
+        args.sampling_num_steps = 100
 
     args.lr = args.lr * (args.training_batch_size / 128)
 
-
     print(f'\nData directory:  {args.data_dir}')
-
-
-    from Cluster.utils.dataHandling import DataProvider
-    data = DataProvider(args=args)
 
 
     # Determine device and set up model and loss function accordingly
@@ -144,7 +158,7 @@ if __name__ == "__main__":
 
 
     # Set up the model path
-    path_to_model = f"{args.where}_{args.which}_epochs{args.training_epochs}_model.pth"
+    path_to_model = f"{args.where}_{args.which}_iterations{args.training_iterations}_model.pth"
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}"
 
@@ -154,14 +168,14 @@ if __name__ == "__main__":
 
 
     # Set up the student model path
-    path_to_distilled_student = f"{args.where}_{args.which}_epochs{args.training_epochs}_model_student.pth"
+    path_to_distilled_student = f"{args.where}_{args.which}_iterations{args.training_iterations}_model_student.pth"
     if args.where == 'cluster':
         path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}"
     print(f'\nDetermined student model path:  {path_to_distilled_student}')
 
 
     # Set up model image path
-    base_name = f"{args.which}_epochs{args.training_epochs}_sampler{args.sampling_sampler}"
+    base_name = f"{args.which}_iterations{args.training_iterations}_sampler{args.sampling_sampler}"
     if args.sampling_sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
         base_name = f'{base_name}_steps{args.sampling_num_steps}'
     else:
@@ -202,6 +216,9 @@ if __name__ == "__main__":
     print(f'\nDetermined student image path: {student_save_path}')
 
 
+    from Cluster.utils.dataHandling import DataProvider
+    data = DataProvider(args=args)
+
     # Set up model based on location
     if args.where == 'cluster':
         from Cluster.utils.modelGetter import model_getter
@@ -233,7 +250,7 @@ if __name__ == "__main__":
 
 
     from Cluster.utils.lossFunctions import LossFns
-    loss_fn = LossFns(args=args, sampler=sampler)
+    loss_fn = LossFns(args=args, sampler=sampler, data=data)
 
 
     from Cluster.utils.noisifier import Noisify
@@ -264,7 +281,7 @@ if __name__ == "__main__":
         print(f'\nEvaluating the model {path_to_model}')
 
         from Cluster.eval import eval_wrapper
-        eval_wrapper(args=args, data=data, img_path=save_path)
+        eval_wrapper(args=args, data=data, model=model, sampler=sampler, reversal_fns=reversal_fns)
 
 
         print(f'\nFinished evaluation.')
