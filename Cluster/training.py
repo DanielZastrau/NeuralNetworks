@@ -130,15 +130,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
     # --- Setup for periodic FID during training ---
     real_ds = data.get_dataset_for_periodic_eval()
-    stats_real_ds = torch_fidelity.calculate_metrics(
-        input1=real_ds,
-        input2=real_ds,
-        batch_size=512,
-        fid=True,
-        cuda=(device == 'cuda'),
-        verbose=False,
-        stats=True
-    )
 
     # initiate the sampler if needed    
     if args.which == 'kac':
@@ -196,100 +187,89 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                     training_stage.increment()
 
                     print(f"\nComputing baseline FID score for Phase 2...")
-                    try:
-                        # sample images from the ema model to calculate a reduced fid score
-                        ema_model.eval()
-                        samples = sample(
-                            args=args,
-                            model=ema_model,
-                            data=data,
-                            sampler=sampler,
-                            num_samples=args.training_stage2_samples,
-                            reversal_fns=reversal_fns
-                        )
-                        generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
+                    # sample images from the ema model to calculate a reduced fid score
+                    ema_model.eval()
+                    samples = sample(
+                        args=args,
+                        model=ema_model,
+                        data=data,
+                        sampler=sampler,
+                        num_samples=args.training_stage2_samples,
+                        reversal_fns=reversal_fns
+                    )
+                    generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
-                        # calculate the fid score
-                        metrics = torch_fidelity.calculate_metrics(
-                            input1_stats=stats_real_ds,
-                            input2=generated_ds,
-                            batch_size=256,
-                            fid=True,
-                            cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
-                            verbose=False,
-                        )
-                        baseline_fid_score = metrics['frechet_inception_distance']
-                        best_fid_score = baseline_fid_score
-                        print(f"Baseline FID Score: {best_fid_score:.4f}\n")
+                    # calculate the fid score
+                    metrics = torch_fidelity.calculate_metrics(
+                        input1=real_ds,
+                        input2=generated_ds,
+                        batch_size=256,
+                        fid=True,
+                        cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
+                        verbose=False,
+                    )
+                    baseline_fid_score = metrics['frechet_inception_distance']
+                    best_fid_score = baseline_fid_score
+                    print(f"Baseline FID Score: {best_fid_score:.4f}\n")
 
-                        # copy the current model
-                        uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                        best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                        best_fid_model_type = "EMA"
-                        torch.save(best_fid_model_state, save_path)
-                        print(f"saved best model to:  {save_path}")
-
-                    except Exception as e:
-                        print(f"Warning: Baseline FID computation failed: {e}")
-                        print("Proceeding to Phase 2 without baseline FID...\n")
+                    # copy the current model
+                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                    best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                    best_fid_model_type = "EMA"
+                    torch.save(best_fid_model_state, save_path)
+                    print(f"saved best model to:  {save_path}")
 
 
         # If loss patience has already been reached, evaluate the model periodically on the fid score for small sample size
         elif training_stage.stage == 'phase2' and (iteration + 1) % args.training_stage2_period == 0:
                 
             print(f"\nPhase 2 checkpoint at epoch {iteration+1}/{args.training_iterations}")
-            try:
-                # sample images from the ema model to calculate a reduced fid score
-                ema_model.eval()
-                samples = sample(
-                    args=args,
-                    model=ema_model,
-                    data=data,
-                    sampler=sampler,
-                    num_samples=args.training_stage2_samples,
-                    reversal_fns=reversal_fns
-                )
-                generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
+            # sample images from the ema model to calculate a reduced fid score
+            ema_model.eval()
+            samples = sample(
+                args=args,
+                model=ema_model,
+                data=data,
+                sampler=sampler,
+                num_samples=args.training_stage2_samples,
+                reversal_fns=reversal_fns
+            )
+            generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
-                # calculate the fid score
-                metrics = torch_fidelity.calculate_metrics(
-                    input1_stats=stats_real_ds,
-                    input2=generated_ds,
-                    batch_size=256,
-                    fid=True,
-                    cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
-                    verbose=False,
-                )
-                fid_score = metrics['frechet_inception_distance']
+            # calculate the fid score
+            metrics = torch_fidelity.calculate_metrics(
+                input1=real_ds,
+                input2=generated_ds,
+                batch_size=256,
+                fid=True,
+                cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
+                verbose=False,
+            )
+            fid_score = metrics['frechet_inception_distance']
 
-                print(f"FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
+            print(f"FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 
-                if fid_score < best_fid_score:
-                    best_fid_score = fid_score
-                    fid_no_improve_count = 0
-                    print(f"FID improved! New best: {best_fid_score:.4f}")
+            if fid_score < best_fid_score:
+                best_fid_score = fid_score
+                fid_no_improve_count = 0
+                print(f"FID improved! New best: {best_fid_score:.4f}")
 
-                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                    best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                    best_fid_model_type = "EMA"
-                    torch.save(best_fid_model_state, save_path)
-                    print(f"saved best fid model to:  {save_path}")
+                uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
+                best_fid_model_type = "EMA"
+                torch.save(best_fid_model_state, save_path)
+                print(f"saved best fid model to:  {save_path}")
 
-                else:
-                    fid_no_improve_count += 1
-                    print(f"FID no improvement counter: {fid_no_improve_count} out of {args.training_stage2_patience}")
+            else:
+                fid_no_improve_count += 1
+                print(f"FID no improvement counter: {fid_no_improve_count} out of {args.training_stage2_patience}")
 
-                    if fid_no_improve_count >= args.training_stage2_patience:
-                        print(f"\n{'='*80}")
-                        print(f"Phase 2 complete: FID has not improved for {args.training_stage2_patience} consecutive checkpoints.")
-                        print(f"Halting training at iteration {iteration+1}.")
-                        print(f"{'='*80}\n")
-                        training_stage.increment()
-
-            except Exception as e:
-                print(f"Warning: FID computation failed at iteration {iteration+1}: {e}")
-                print("Continuing training without FID checkpoint...")
-
+                if fid_no_improve_count >= args.training_stage2_patience:
+                    print(f"\n{'='*80}")
+                    print(f"Phase 2 complete: FID has not improved for {args.training_stage2_patience} consecutive checkpoints.")
+                    print(f"Halting training at iteration {iteration+1}.")
+                    print(f"{'='*80}\n")
+                    training_stage.increment()
 
         # If loss and fid patience have been reached, halt
         if training_stage.stage == 'halt':
