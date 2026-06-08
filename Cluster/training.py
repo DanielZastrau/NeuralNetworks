@@ -195,6 +195,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         data=data,
                         sampler=sampler,
                         num_samples=args.training_stage2_samples,
+                        num_steps=args.training_stage2_num_steps,
                         reversal_fns=reversal_fns
                     )
                     generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
@@ -232,6 +233,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 data=data,
                 sampler=sampler,
                 num_samples=args.training_stage2_samples,
+                num_steps=args.training_stage2_num_steps,
                 reversal_fns=reversal_fns
             )
             generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())

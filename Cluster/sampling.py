@@ -14,15 +14,15 @@ from Cluster.utils.reversals import Reversal
 @torch.inference_mode()
 def sample(args: argparse.Namespace, model: torch.nn.Module,
                     data: DataProvider, reversal_fns: Reversal,
-                    sampler: TorchKacConstantSampler | None, num_samples: int) -> torch.Tensor:
+                    sampler: TorchKacConstantSampler | None, num_samples: int,
+                    num_steps: int) -> torch.Tensor:
 
-    batch_size = args.sampling_batch_size
     device = next(model.parameters()).device
 
     all_samples = []
 
-    for i in range(0, num_samples, batch_size):
-        curr_batch_size = min(batch_size, num_samples - i)
+    for i in range(0, num_samples, args.sampling_batch_size):
+        curr_batch_size = min(args.sampling_batch_size, num_samples - i)
         if i % 10 == 0:
             print(f'curr batch:  {i}')
         
@@ -45,8 +45,8 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         # Properly scale continuous time from T down to epsilon
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
-        time_steps = torch.linspace(args.T, args.time_truncation, args.sampling_num_steps, device=device)
-        dt = (args.T - args.time_truncation) / (args.sampling_num_steps - 1)
+        time_steps = torch.linspace(args.T, args.time_truncation, num_steps, device=device)
+        dt = (args.T - args.time_truncation) / (num_steps - 1)
 
         for step_idx, t_val in enumerate(time_steps):
             # Broadcast the continuous time value to the batch size
@@ -54,7 +54,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
             
             if args.sampling_sampler == 'em':
                 # Don't add random noise at the very last step
-                noise_injection_bool = (step_idx != args.sampling_num_steps - 1)
+                noise_injection_bool = (step_idx != num_steps - 1)
                     
                 x_batch = reversal_fns.integrator(
                     model=model,
@@ -86,7 +86,11 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
     """
 
 
-    samples = sample(args=args, model=model, data=data, reversal_fns=reversal_fns, sampler=sampler, num_samples=args.sampling_num_samples)
+    samples = sample(
+        args=args, model=model, data=data,
+        reversal_fns=reversal_fns, sampler=sampler, num_samples=args.sampling_num_samples,
+        num_steps=args.sampling_num_steps
+    )
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
     samples = (samples + 1.0) / 2.0
