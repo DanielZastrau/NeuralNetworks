@@ -39,6 +39,8 @@ if __name__ == "__main__":
                         help='allow for x-many non improvements of fid score')
     parser.add_argument('--training-stage2-samples', type=int, default=2_000,
                         help='lets you set a different sample size on which the fid checkpoints are calculated')
+    parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
+                        help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
     
 
     # ! sampling arguments
