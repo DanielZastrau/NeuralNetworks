@@ -24,7 +24,7 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
     for i in range(0, num_samples, args.sampling_batch_size):
         curr_batch_size = min(args.sampling_batch_size, num_samples - i)
         if i % 10 == 0:
-            print(f'curr batch:  {i}')
+            print(f'curr batch:  {i}  of {num_samples // args.sampling_batch_size + 1}')
         
         # Initialize with random noise
         if args.which == 'mmd':

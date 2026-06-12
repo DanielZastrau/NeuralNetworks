@@ -160,9 +160,11 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
 
         # every 5k iterations sample a small grid to check progress
-        if iteration % 5_000 == 0:
-            tmp = args.sampling_mode
+        if (iteration + 1) % 5_000 == 0:
+            tmp_mode = args.sampling_mode
+            tmp_num = args.sampling_num_samples
             args.sampling_mode = '8x8'
+            args.sampling_num_samples = 64
 
             tmp_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
             if args.where == 'cluster':
@@ -184,7 +186,10 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 save_path=tmp_save_path,
             )
 
-            args.sampling_mode = tmp
+            args.sampling_mode = tmp_mode
+            args.sampling_num_samples = tmp_num
+
+            print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {tmp_save_path}')
 
 
         # evluate the model periodically on the loss function (computationally faster than generating samples)
@@ -203,7 +208,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 best_model_state = copy.deepcopy(uncompiled_model.state_dict())
                 best_model_type = "EMA"
                 torch.save(best_model_state, save_path)
-                print(f"saved best model to:  {save_path}")
+                print(f"saved best model to:  {save_path},    loss {ema_loss}")
             else:
                 counter_no_improve += 1
                 print(f"Loss early stopping counter: {counter_no_improve} out of {args.training_stage1_patience}")
