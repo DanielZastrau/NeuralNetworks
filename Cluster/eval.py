@@ -23,7 +23,8 @@ def evaluate_fid(args: argparse.Namespace, data: DataProvider, model: torch.nn.M
         data=data,
         sampler=sampler,
         num_samples=args.eval_num_samples,
-        reversal_fns=reversal_fns
+        reversal_fns=reversal_fns,
+        num_steps=args.eval_num_steps
     )
     generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 

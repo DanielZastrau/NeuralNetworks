@@ -68,6 +68,8 @@ if __name__ == "__main__":
     # ! eval arguments
     parser.add_argument('--eval-num-samples', type=int, default=50_000,
                         help='how many samples the fid is supposed to be calculated on')
+    parser.add_argument('--eval-num-steps', type=int, default=8_192,
+                        help='if sampler uses linspace, this specifies the amount of steps the evaluator module takes when generating samples')
 
 
     # ! distillation arguments
@@ -149,6 +151,7 @@ if __name__ == "__main__":
 
         # * as was done in "2025 - Duong et al - Telegraphers"
         args.sampling_num_steps = 100
+        args.eval_num_steps = 100
 
     args.lr = args.lr * (args.training_batch_size / 128)
 
