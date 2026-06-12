@@ -17,11 +17,14 @@ class SinusoidalPositionEmbeddings(nn.Module):
         
         half_dim = self.dim // 2
         
-        embeddings = math.log(10000) / (half_dim - 1)
-        embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
-        embeddings = time[:, None] * embeddings[None, :]
+        embeddings = math.log(10_000) / (half_dim - 1)
+        embeddings = torch.exp(torch.arange(half_dim, dtype=torch.float32, device=device) * -embeddings)
+        embeddings = time[:, None].float() * embeddings[None]
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         
+
+        if self.dim % 2:
+            embeddings = torch.cat([embeddings, torch.zeros_like(embeddings[:, :1])], dim=-1)
         return embeddings
 
 class TimeAwareDoubleConv(nn.Module):

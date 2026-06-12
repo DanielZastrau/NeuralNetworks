@@ -43,6 +43,9 @@ if __name__ == "__main__":
     parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
                         help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
     
+    parser.add_argument('--training-sampling-period', type=int, default=5_000,
+                        help='lets you set in which regular interval an 8x8 grid is going to be sampled')
+
 
     # ! sampling arguments
     parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
