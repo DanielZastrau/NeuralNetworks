@@ -56,7 +56,6 @@ class Reversal():
     # =============================================================================================
     # explicit solver implementations
 
-
     # ! Self implement these methods to avoid memory overhead of torchdiffeq and to stay on the gpu,
     # ! since scipy (while it is less memory intensive) is cpu native and therefore lacks the performance
     # ! enhancements of the gpu arch

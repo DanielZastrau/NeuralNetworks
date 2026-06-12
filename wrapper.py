@@ -28,12 +28,13 @@ if __name__ == "__main__":
     parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
     
-    # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
-    parser.add_argument('--training-stage1-period', type=int, default=1000,
+    # for cifar10s 50k training images, this is about every 15 to 20 epochs with a batch size of 128
+    parser.add_argument('--training-stage1-period', type=int, default=5_000,
                         help='every x iterations the model is going to be evaluated on the test set')
     parser.add_argument('--training-stage1-patience', type=int, default=40,
                         help='allow for x-many non improvements of loss')
-    parser.add_argument('--training-stage2-period', type=int, default=1000,
+    # * matches the setup of "2025 - Duong et al - Telegraphers"
+    parser.add_argument('--training-stage2-period', type=int, default=10_000,
                         help='every x iterations the model is going to be evaluated on the fid score')
     parser.add_argument('--training-stage2-patience', type=int, default=40,
                         help='allow for x-many non improvements of fid score')
@@ -113,7 +114,7 @@ if __name__ == "__main__":
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
-    parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
+    parser.add_argument('--kac-g', type=str, default='opt2', choices=['opt1', 'opt2'],
                         help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
 
 
