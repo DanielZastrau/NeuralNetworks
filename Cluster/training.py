@@ -1,5 +1,6 @@
 import argparse
 import copy
+import os
 
 import torch
 import torch_fidelity
@@ -11,7 +12,7 @@ from Cluster.utils.lossFunctions import LossFns
 from Cluster.utils.stages import Stages
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.reversals import Reversal
-from Cluster.sampling import sample
+from Cluster.sampling import sample, sample_wrapper
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
 def train(x_batch: torch.Tensor,
@@ -133,7 +134,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
     # initiate the sampler if needed    
     if args.which == 'kac':
-        sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
+        sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50_000, K=4_096)
     else:
         sampler = None
 
@@ -156,6 +157,34 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 ema_model=ema_model, loss_fn=loss_fn,
                 optimizer=optimizer, scheduler=scheduler,
                 scaler=scaler)
+
+
+        # every 5k iterations sample a small grid to check progress
+        if iteration % 5_000 == 0:
+            tmp = args.sampling_mode
+            args.sampling_mode = '8x8'
+
+            tmp_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
+            if args.where == 'cluster':
+                if not os.path.exists('/work/zastrau/samples'):
+                    os.mkdir(f'/work/zastrau/samples{args.which}')
+                tmp_save_path = f'/work/zastrau/samples/{tmp_save_path}'
+            else:    # args.where == 'local':
+                if not os.path.exists(f'./samples'):
+                    os.mkdir('./samples')
+                tmp_save_path = f'./samples/{tmp_save_path}'
+
+            ema_model.eval()
+            sample_wrapper(
+                args=args,
+                model=ema_model,
+                data=data,
+                sampler=sampler,
+                reversal_fns=reversal_fns,
+                save_path=tmp_save_path,
+            )
+
+            args.sampling_mode = tmp
 
 
         # evluate the model periodically on the loss function (computationally faster than generating samples)
@@ -198,9 +227,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         num_steps=args.training_stage2_num_steps,
                         reversal_fns=reversal_fns
                     )
-                    # [-1, 1] > [0, 1] > [0, 255]
-                    samples = (samples + 1.0) / 2.0
-                    samples = samples.clamp(0.0, 1.0)
                     generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
                     # calculate the fid score
@@ -213,7 +239,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         verbose=False,
                     )
                     baseline_fid_score = metrics['frechet_inception_distance']
-                    torch.seed()
                     best_fid_score = baseline_fid_score
                     print(f"Baseline FID Score: {best_fid_score:.4f}\n")
 
@@ -240,7 +265,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 num_steps=args.training_stage2_num_steps,
                 reversal_fns=reversal_fns
             )
-            generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
+            generated_ds = Uint8Dataset(to_uint8_rgb(samples).detach().cpu())
 
             # calculate the fid score
             metrics = torch_fidelity.calculate_metrics(
@@ -252,7 +277,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 verbose=False,
             )
             fid_score = metrics['frechet_inception_distance']
-            torch.seed()
 
             print(f"FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 

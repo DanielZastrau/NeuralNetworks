@@ -57,13 +57,16 @@ class DataProvider():
             # channels, width, height
             self.data_dims: Shape = Shape(3, 32, 32)
 
+    def transform(self):
+
+        return Compose([
+                ToTensor(),
+                Normalize((0.5,) * 3, (0.5,) * 3),
+            ])
+
     def get_datasets_for_training(self) -> tuple[DataLoader, DataLoader]:
 
-        transform = v2.Compose([
-        v2.ToImage(),
-        v2.ToDtype(torch.float32, scale=True),  # Scales to [0, 1]
-        v2.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])  # Shifts to [-1, 1]
-        ])
+        transform = self.transform()
 
         training_data = datasets.CIFAR10(
             root=self.args.data_dir if self.args.where == 'cluster' else "./data",
@@ -84,13 +87,13 @@ class DataProvider():
             training_data,
             batch_size=self.args.training_batch_size,
             shuffle=True,
-            num_workers=4,
+            num_workers=1,
             pin_memory=True if self.args.where == 'cluster' else False
         )
         test_dataloader = DataLoader(    # type: ignore
             test_data,
             batch_size=self.args.training_batch_size,
-            num_workers=4,
+            num_workers=1,
             pin_memory=True if self.args.where == 'cluster' else False
         )
 
@@ -102,10 +105,7 @@ class DataProvider():
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        transform = Compose([
-                ToTensor(),
-                Normalize((0.5,) * 3, (0.5,) * 3),
-            ])
+        transform = self.transform()
 
         eval_set = datasets.CIFAR10(
             root=self.args.data_dir if self.args.where == 'cluster' else './data',
@@ -119,7 +119,7 @@ class DataProvider():
             raise ValueError(f"Requested {self.args.eval_num_samples} samples, but CIFAR10 test set only has {len(eval_set)}.")
         eval_set = Subset(eval_set, range(self.args.eval_num_samples))    # type: ignore
 
-        dataset_loader = DataLoader(eval_set, batch_size=512, num_workers=4)    # type: ignore
+        dataset_loader = DataLoader(eval_set, batch_size=512, shuffle=False, num_workers=4)    # type: ignore
 
         real_images = []
         for (imgs, _) in dataset_loader:
@@ -137,10 +137,7 @@ class DataProvider():
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        transform = Compose([
-                ToTensor(),
-                Normalize((0.5,) * 3, (0.5,) * 3),
-            ])
+        transform = self.transform()
 
         real_ds = datasets.CIFAR10(
             root=self.args.data_dir if self.args.where == 'cluster' else "./data",
@@ -158,7 +155,7 @@ class DataProvider():
 
         real_images = []
         for (imgs, _) in real_ds_loader:
-            real_images.append(to_uint8_rgb(imgs.to(device).cpu()))
+            real_images.append(to_uint8_rgb(imgs.to(device)))
             if sum(x.size(0) for x in real_images) >= self.args.training_stage2_samples:
                 break
         real_images = torch.cat(real_images)[:self.args.training_stage2_samples].cpu()

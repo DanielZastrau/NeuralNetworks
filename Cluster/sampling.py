@@ -93,7 +93,7 @@ def sample_wrapper(args: argparse.Namespace, model: torch.nn.Module, data: DataP
     )
 
     # if your images are normalized to [-1, 1], rescale to [0, 1]
-    samples = (samples + 1.0) / 2.0
+    samples = (samples + 1.0) *0.5
     samples = samples.clamp(0.0, 1.0)
 
     if args.sampling_mode == '8x8':
