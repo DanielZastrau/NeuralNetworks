@@ -198,6 +198,9 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         num_steps=args.training_stage2_num_steps,
                         reversal_fns=reversal_fns
                     )
+                    # [-1, 1] > [0, 1] > [0, 255]
+                    samples = (samples + 1.0) / 2.0
+                    samples = samples.clamp(0.0, 1.0)
                     generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
 
                     # calculate the fid score
@@ -210,6 +213,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         verbose=False,
                     )
                     baseline_fid_score = metrics['frechet_inception_distance']
+                    torch.seed()
                     best_fid_score = baseline_fid_score
                     print(f"Baseline FID Score: {best_fid_score:.4f}\n")
 
@@ -248,6 +252,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 verbose=False,
             )
             fid_score = metrics['frechet_inception_distance']
+            torch.seed()
 
             print(f"FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 
