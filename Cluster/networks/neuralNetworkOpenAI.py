@@ -389,9 +389,6 @@ class QKVAttention(nn.Module):
             (k * scale).float().view(bs * self.n_heads, ch, length),
         )  # More stable with f16 than dividing afterwards
 
-        if not torch.isfinite(weight).all() and self.args.training_verbosity == 'verbose':
-            print(f"Warning: Non-finite values detected in attention weights. Max: {weight.max()}, Min: {weight.min()}")
-            
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = th.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
         return a.reshape(bs, -1, length)

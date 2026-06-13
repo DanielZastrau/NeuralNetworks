@@ -56,14 +56,14 @@ class LossFns():
         with torch.amp.autocast(device_type=device.type):
             pred = model(x_corrupted, t * 1000.0)
 
-        if self.args.training_verbosity == 'verbose':
-            if not torch.isfinite(pred).all():
-                print(f"NaN/Inf detected in model predictions.")
-            if not torch.isfinite(target).all():
-                print(f"NaN/Inf detected in target tensor.")
-
         # compute empirical loss
         loss = torch.nn.functional.mse_loss(pred.float(), target)
+
+        if self.args.training_verbosity == 'verbose' and not torch.isfinite(loss):
+            if not torch.isfinite(pred).all():
+                print("NaN/Inf detected in model predictions.")
+            if not torch.isfinite(target).all():
+                print("NaN/Inf detected in target tensor.")
 
         return loss
     
@@ -112,13 +112,13 @@ class LossFns():
                 self.data.data_dims.width
             ), t.squeeze(1) * 1000.0).view(B, -1)
 
-        if self.args.training_verbosity == 'verbose':
-            if not torch.isfinite(pred).all():
-                print(f"NaN/Inf detected in model predictions.")
-            if not torch.isfinite(velo + drift).all():
-                print(f"NaN/Inf detected in target tensor.")
-
         loss = torch.nn.functional.mse_loss(pred.float(), velo + drift)
+
+        if self.args.training_verbosity == 'verbose' and not torch.isfinite(loss):
+            if not torch.isfinite(pred).all():
+                print("NaN/Inf detected in model predictions.")
+            if not torch.isfinite(velo + drift).all():
+                print("NaN/Inf detected in target tensor.")
 
         return loss
     
@@ -156,12 +156,12 @@ class LossFns():
         with torch.amp.autocast(device_type=device.type):
             pred = model(x_corrupted, t * 1000.0)
 
-        if self.args.training_verbosity == 'verbose':
-            if not torch.isfinite(pred).all():
-                print(f"NaN/Inf detected in model predictions.")
-            if not torch.isfinite(target).all():
-                print(f"NaN/Inf detected in target tensor.")
-
         loss = torch.nn.functional.mse_loss(pred.float(), target)
+
+        if self.args.training_verbosity == 'verbose' and not torch.isfinite(loss):
+            if not torch.isfinite(pred).all():
+                print("NaN/Inf detected in model predictions.")
+            if not torch.isfinite(target).all():
+                print("NaN/Inf detected in target tensor.")
 
         return loss
