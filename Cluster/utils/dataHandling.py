@@ -66,6 +66,8 @@ class DataProvider():
 
     def get_datasets_for_training(self) -> tuple[DataLoader, DataLoader]:
 
+        print(f'training with batch size:  {self.args.training_batch_size}')
+
         transform = self.transform()
 
         training_data = datasets.CIFAR10(

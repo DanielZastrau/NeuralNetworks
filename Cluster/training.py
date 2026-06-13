@@ -15,7 +15,7 @@ from Cluster.utils.reversals import Reversal
 from Cluster.sampling import sample, sample_wrapper
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
-def train(x_batch: torch.Tensor,
+def train(args: argparse.Namespace, x_batch: torch.Tensor,
           model: torch.nn.Module, ema_model: AveragedModel,
           loss_fn: LossFns, optimizer: torch.optim.Optimizer,
           scheduler: torch.optim.lr_scheduler.LRScheduler, scaler: torch.amp.GradScaler):
@@ -30,16 +30,25 @@ def train(x_batch: torch.Tensor,
     optimizer.zero_grad()
 
     loss = loss_fn.loss(model=model, mini_batch=x_batch)
+    if args.training_verbosity == 'verbose':
+        print(f'Loss  {loss.item()}')
 
     # Scales the loss and completes the backward pass
     scaler.scale(loss).backward()
 
     # Unscale gradients before clipping
     scaler.unscale_(optimizer)
-    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+
+    # Capture and log the norm before clipping
+    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+    if args.training_verbosity == 'verbose':
+        print(f'Grad Norm: {grad_norm.item()}')
 
     # Step optimizer and scaler
     scale_before = scaler.get_scale()
+    # Log the current scale factor
+    if args.training_verbosity == 'verbose':
+        print(f'Scaler Scale: {scale_before}')
     
     # Step optimizer and scaler
     scaler.step(optimizer)
@@ -49,8 +58,8 @@ def train(x_batch: torch.Tensor,
     if scaler.get_scale() >= scale_before:
         scheduler.step()
 
-    # Update EMA model parameters
-    ema_model.update_parameters(model)
+        # Update EMA model parameters
+        ema_model.update_parameters(model)
 
 
 def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
@@ -59,17 +68,19 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
     num_batches = len(dataloader)
 
     model.eval()
-    test_loss = 0
+    loss = 0
     with torch.no_grad():
         for X, _ in dataloader:
             X = X.to(device)
 
-            test_loss += loss_fn.loss(model=model, mini_batch=X).detach()
+            loss += loss_fn.loss(model=model, mini_batch=X).detach()
+            if args.training_verbosity == 'verbose':
+                print(f'loss  {loss.item()}')
 
             if args.proof_of_concept:
                 break
 
-    avg_test_loss = test_loss.item() / num_batches
+    avg_test_loss = loss.item() / num_batches
 
     return avg_test_loss
 
@@ -143,7 +154,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     training_stage = Stages()
     train_iter = iter(train_dataloader)
     for iteration in range(args.training_iterations):
-        if iteration % 1000 == 0:
+        if iteration % args.training_logging_period == 0 and args.training_verbosity in ['normal', 'verbose']:
             print(f'iteration  {iteration}----------------------------')
 
         # the iterator does not need to be initialized every time
@@ -153,14 +164,14 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             train_iter = iter(train_dataloader)
             x_batch, _ = next(train_iter)
 
-        train(x_batch=x_batch, model=model,
+        train(args=args, x_batch=x_batch, model=model,
                 ema_model=ema_model, loss_fn=loss_fn,
                 optimizer=optimizer, scheduler=scheduler,
                 scaler=scaler)
 
 
         # every 5k iterations sample a small grid to check progress
-        if (iteration + 1) % 5_000 == 0:
+        if (iteration + 1) % args.training_sampling_period == 0:
             tmp_mode = args.sampling_mode
             tmp_num = args.sampling_num_samples
             args.sampling_mode = '8x8'
@@ -197,6 +208,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             
             # evaluate just the ema model
             ema_loss = test(args, test_dataloader, ema_model, loss_fn)
+            if args.training_verbosity == 'verbose':
+                print(f'tested the ema model  --  loss    {ema_loss.item()}')
 
             # Early Stopping Logic (Phase 1) -------------------------------------------------------
             if ema_loss < best_test_loss:

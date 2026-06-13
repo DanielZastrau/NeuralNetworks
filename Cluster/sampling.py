@@ -19,6 +19,8 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
 
     device = next(model.parameters()).device
 
+    print(f'sampling with  {args.sampling_num_steps}  many steps')
+
     all_samples = []
 
     for i in range(0, num_samples, args.sampling_batch_size):
