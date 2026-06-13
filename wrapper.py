@@ -30,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
     
-    # for cifar10s 50k training images, this is about every 15 to 20 epochs with a batch size of 128
+    # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
     parser.add_argument('--training-stage1-period', type=int, default=1_000,
                         help='every x iterations the model is going to be evaluated on the test set')
     parser.add_argument('--training-stage1-patience', type=int, default=40,

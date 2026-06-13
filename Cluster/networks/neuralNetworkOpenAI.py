@@ -450,11 +450,8 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
-        args: argparse.Namespace
     ):
         super().__init__()
-
-        self.args = args
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
