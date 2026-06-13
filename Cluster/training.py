@@ -43,6 +43,10 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
     if args.training_verbosity == 'verbose':
         print(f'Grad Norm: {grad_norm.item()}')
+        if not torch.isfinite(grad_norm):
+            for name, param in model.named_parameters():
+                if param.grad is not None and not torch.isfinite(param.grad).all():
+                    print(f"NaN/Inf gradient in layer: {name}")
 
     # Step optimizer and scaler
     scale_before = scaler.get_scale()
