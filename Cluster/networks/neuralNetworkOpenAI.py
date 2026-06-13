@@ -2,6 +2,7 @@
 
 from abc import abstractmethod
 
+import argparse
 import math
 
 import numpy as np
@@ -350,7 +351,7 @@ class QKVAttentionLegacy(nn.Module):
         q, k, v = qkv.reshape(bs * self.n_heads, ch * 3, length).split(ch, dim=1)
         scale = 1 / math.sqrt(math.sqrt(ch))
         weight = th.einsum(
-            "bct,bcs->bts", q * scale, k * scale
+            "bct,bcs->bts", (q * scale).float(), (k * scale).float()
         )  # More stable with f16 than dividing afterwards
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = th.einsum("bts,bcs->bct", weight, v)
@@ -384,9 +385,13 @@ class QKVAttention(nn.Module):
         scale = 1 / math.sqrt(math.sqrt(ch))
         weight = th.einsum(
             "bct,bcs->bts",
-            (q * scale).view(bs * self.n_heads, ch, length),
-            (k * scale).view(bs * self.n_heads, ch, length),
+            (q * scale).float().view(bs * self.n_heads, ch, length),
+            (k * scale).float().view(bs * self.n_heads, ch, length),
         )  # More stable with f16 than dividing afterwards
+
+        if not torch.isfinite(weight).all() and self.args.training_verbosity == 'verbose':
+            print(f"Warning: Non-finite values detected in attention weights. Max: {weight.max()}, Min: {weight.min()}")
+            
         weight = th.softmax(weight.float(), dim=-1).type(weight.dtype)
         a = th.einsum("bts,bcs->bct", weight, v.reshape(bs * self.n_heads, ch, length))
         return a.reshape(bs, -1, length)
@@ -448,8 +453,11 @@ class UNetModel(nn.Module):
         use_scale_shift_norm=False,
         resblock_updown=False,
         use_new_attention_order=False,
+        args: argparse.Namespace
     ):
         super().__init__()
+
+        self.args = args
 
         if num_heads_upsample == -1:
             num_heads_upsample = num_heads
