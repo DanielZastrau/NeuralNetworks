@@ -62,7 +62,7 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
         ema_model.update_parameters(model)
 
 
-def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns):    # type: ignore    due to type of dataloader partially unknown warning
+def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: LossFns) -> float:    # type: ignore    due to type of dataloader partially unknown warning
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     num_batches = len(dataloader)
@@ -209,7 +209,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             # evaluate just the ema model
             ema_loss = test(args, test_dataloader, ema_model, loss_fn)
             if args.training_verbosity == 'verbose':
-                print(f'tested the ema model  --  loss    {ema_loss.item()}')
+                print(f'tested the ema model  --  loss    {ema_loss}')
 
             # Early Stopping Logic (Phase 1) -------------------------------------------------------
             if ema_loss < best_test_loss:
