@@ -249,7 +249,7 @@ if __name__ == "__main__":
     else:    # args.where == 'local'
         from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
-    print(f'\n Loaded the model.')
+    print(f'\n Instantiated the model.')
 
     if args.model:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
