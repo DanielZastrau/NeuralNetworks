@@ -47,6 +47,7 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
             for name, param in model.named_parameters():
                 if param.grad is not None and not torch.isfinite(param.grad).all():
                     print(f"NaN/Inf gradient in layer: {name}")
+        raise RuntimeError('Encountered corruption. Stopping the training.')
 
     # Step optimizer and scaler
     scale_before = scaler.get_scale()
