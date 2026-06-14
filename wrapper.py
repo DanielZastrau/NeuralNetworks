@@ -297,6 +297,7 @@ if __name__ == "__main__":
         from Cluster.sampling import sample_wrapper
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=save_path)
 
+        print(f'\nFinished the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples. And saved to {save_path}.')
 
     # Evaluate the model using FID
     if args.what in ['eval']:

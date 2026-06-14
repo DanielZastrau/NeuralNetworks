@@ -185,7 +185,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 scaler=scaler)
 
 
-        # every 5k iterations sample a small grid to check progress
+        # regularly sample a small grid to check progress
         if (iteration + 1) % args.training_sampling_period == 0:
             tmp_mode = args.sampling_mode
             tmp_num = args.sampling_num_samples
@@ -195,7 +195,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             tmp_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
             if args.where == 'cluster':
                 if not os.path.exists('/work/zastrau/samples'):
-                    os.mkdir(f'/work/zastrau/samples{args.which}')
+                    os.mkdir(f'/work/zastrau/samples')
                 tmp_save_path = f'/work/zastrau/samples/{tmp_save_path}'
             else:    # args.where == 'local':
                 if not os.path.exists(f'./samples'):
