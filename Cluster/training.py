@@ -101,7 +101,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
     # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
-    optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.02)
 
     # Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
     warmup_scheduler = LinearLR(
