@@ -96,34 +96,45 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    # Define step counts
-    warmup_steps = int(args.training_iterations * 0.05)
 
     # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
     optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.02)
 
-    # Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
-    warmup_scheduler = LinearLR(
-        optimizer,
-        start_factor=1e-8,
-        end_factor=1.0,
-        total_iters=warmup_steps
-    )
+    if not args.model:    # ! I.e. if a new model is trained 
+        # Define step counts
+        warmup_steps = int(args.training_iterations * 0.05)
 
-    # Constant learning rate after warmup
-    constant_scheduler = ConstantLR(
-        optimizer,
-        factor=1.0,
-        total_iters=1
-    )
 
-    # Chain the schedulers
-    scheduler = SequentialLR(
-        optimizer,
-        schedulers=[warmup_scheduler, constant_scheduler],
-        milestones=[warmup_steps]
-    )
+        # Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
+        warmup_scheduler = LinearLR(
+            optimizer,
+            start_factor=1e-8,
+            end_factor=1.0,
+            total_iters=warmup_steps
+        )
+
+        # Constant learning rate after warmup
+        constant_scheduler = ConstantLR(
+            optimizer,
+            factor=1.0,
+            total_iters=1
+        )
+
+        # Chain the schedulers
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, constant_scheduler],
+            milestones=[warmup_steps]
+        )
+
+    else:    # ! I.e. if a pre-trained model is passed
+        # Use a constant learning rate for finetuning/pretrained model
+        scheduler = ConstantLR(
+            optimizer,
+            factor=1.0,
+            total_iters=1
+        )
 
     # Initialize the Gradient Scaler for AMP
     scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')

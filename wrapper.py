@@ -96,8 +96,8 @@ if __name__ == "__main__":
 
 
     # ! general arguments
-    parser.add_argument('--model', type=str,
-                        help='path to model, relative or absolute, needed if "what" is set to "sample" or "eval" or "distill"')
+    parser.add_argument('--model', type=str, default='',
+                        help='path to model, relative or absolute, needed if "what" is set to "sample" or "eval" or "distill", optional for "what" = "train"')
 
 
     # ! configuration arguments
@@ -169,10 +169,11 @@ if __name__ == "__main__":
 
     print(f'\nData directory:  {args.data_dir}')
 
-    # Determine device and set up model and loss function accordingly
     import torch
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.set_float32_matmul_precision('high')
+
+    # Determine device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'\nDetermined device:  {device}')
 
 
@@ -181,9 +182,10 @@ if __name__ == "__main__":
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}"
 
-    if args.what != 'train':    # then a path to a model has to be given through the arguments
+    if args.model:    # then a path to a model has to be given through the arguments
         path_to_model = args.model
-    print(f'\nDetermined model path:  {path_to_model}')
+        print('\nA model path has been provided.')
+    print(f'\nDetermined model path:  {path_to_model}.')
 
 
     # Set up the student model path
@@ -249,7 +251,7 @@ if __name__ == "__main__":
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
     print(f'\n Loaded the model.')
 
-    if args.what in ['eval', 'sample']:
+    if args.model:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
         print('\n Loaded the state dict.')
 
