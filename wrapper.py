@@ -71,6 +71,9 @@ if __name__ == "__main__":
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
     parser.add_argument('--sampling-abs-tol', type=float, default=1e-4,
                         help='used for the RK45 solver which is employed for diff with pfode and kac with rk45')
+    
+    parser.add_argument('--sampling-logging-period', type=int, default=1_000,
+                        help='lets you set the regular interval where the process sends you a lifesign')
 
 
     # ! eval arguments
