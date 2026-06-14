@@ -13,7 +13,7 @@ if __name__ == "__main__":
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
                         help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
                             Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=[ 'full', 'train', 'sample', 'eval', 'distill', 'train+eval'], default='full',
+    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'distill'], default='train',
                         help='lets you adjust what exactly you want to run if you only need a certain segment')
     
 
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     if args.where == 'cluster':
         path_to_model = f"/work/zastrau/{path_to_model}"
 
-    if args.what != 'full' and args.what != 'train':    # then a path to a model has to be given through the arguments
+    if args.what != 'train':    # then a path to a model has to be given through the arguments
         path_to_model = args.model
     print(f'\nDetermined model path:  {path_to_model}')
 
@@ -226,8 +226,8 @@ if __name__ == "__main__":
     student_save_path = f'./{student_base_name}'
     if args.where == 'cluster':
         if args.sampling_mode == '8x8':
-            save_path = f"/homes/math/zastrau/NeuralNetworkSamples/{base_name}"
-            student_save_path = f'/homes/math/zastrau/NeuralNetworkSamples/{student_base_name}'
+            save_path = f"/work/zastrau/samples/{base_name}"
+            student_save_path = f'/work/zastrau/samples/{student_base_name}'
         else:    # args.sampling_mode == 'set'
             save_path = f"/work/zastrau/samples/{base_name}"
             student_save_path = f'/work/zastrau/samples/{student_base_name}'
@@ -247,9 +247,11 @@ if __name__ == "__main__":
     else:    # args.where == 'local'
         from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+    print(f'\n Loaded the model.')
 
     if args.what in ['eval', 'sample']:
         model.load_state_dict(torch.load(path_to_model, map_location=device))
+        print('\n Loaded the state dict.')
 
 
     # compile the model to fuse and optimize the UNet graph for the GPU
@@ -277,7 +279,7 @@ if __name__ == "__main__":
 
 
     # Train the model
-    if args.what in ['full', 'train', 'train+eval']:
+    if args.what in ['train']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the training')
 
@@ -295,7 +297,7 @@ if __name__ == "__main__":
 
 
     # Evaluate the model using FID
-    if args.what in ['full', 'eval', 'train+eval']:
+    if args.what in ['eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_model}')
 

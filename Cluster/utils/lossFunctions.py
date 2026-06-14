@@ -53,7 +53,7 @@ class LossFns():
         # ! scale the time up to [0, 1000.0] since the unet time embedding
         # ! expects this time scale otherwise the time embedding will basically
         # ! look the same at t=0.01 and t=0.99
-        with torch.amp.autocast(device_type=device.type):
+        with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16):
             pred = model(x_corrupted, t * 1000.0)
 
         # compute empirical loss
@@ -104,7 +104,7 @@ class LossFns():
             velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t, a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
 
         # Model is conditioned on original time t
-        with torch.amp.autocast(device_type=device.type):
+        with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16):
             pred = model(x_corrupted.view(
                 B,
                 self.data.data_dims.channels,
@@ -153,7 +153,7 @@ class LossFns():
         target = df_t * x0 + dg_t * pre_noise / torch.exp(g_t / self.args.mmd_b)
 
         # compute the mse loss
-        with torch.amp.autocast(device_type=device.type):
+        with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16):
             pred = model(x_corrupted, t * 1000.0)
 
         loss = torch.nn.functional.mse_loss(pred.float(), target)
