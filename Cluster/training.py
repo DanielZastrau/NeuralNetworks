@@ -336,13 +336,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                         best_fid_score = baseline_fid_score
                         print(f"Baseline FID Score: {best_fid_score:.4f}\n")
 
-                        # copy the current model
-                        uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                        best_fid_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                        best_fid_model_type = "EMA"
-                        torch.save(best_fid_model_state, save_path)
-                        print(f"saved best model to:  {save_path}")
-
 
             # If loss patience has already been reached, evaluate the model periodically on the fid score for small sample size
             elif training_stage.stage == 'phase2' and (iteration + 1) % args.training_stage2_period == 0:
