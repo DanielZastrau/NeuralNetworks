@@ -24,13 +24,21 @@ if __name__ == "__main__":
                         help='specifies the amount of epochs in training, and which model to use in sampling and eval')
     parser.add_argument('--training-logging-period', type=int, default=1_000,
                         help='lets you set the regular interval where the process sends you a lifesign')
+    parser.add_argument('--training-use-early-halting', type=bool, default=False)
     # * batch sizes of 128 seem to be the standard, see:
     # * "2025 - Duong et al - Telegraphers"
     # * "2025 - Han et al DistillKac"
     parser.add_argument('--training-batch-size', type=int, default=128,
                         help='only needed for training')
     
+
+    parser.add_argument('--training-evaluation-period-loss', type=int, default=2_000)
+    parser.add_argument('--training-evaluation-period-grid', type=int, default=10_000)
+    parser.add_argument('--training-evaluation-period-fid', type=int, default=50_000)
+
+
     # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
+    # ! these let you configure the behavior and patience of the early halting mechanism
     parser.add_argument('--training-stage1-period', type=int, default=1_000,
                         help='every x iterations the model is going to be evaluated on the test set')
     parser.add_argument('--training-stage1-patience', type=int, default=40,
@@ -45,11 +53,10 @@ if __name__ == "__main__":
     parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
                         help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
     
-    parser.add_argument('--training-sampling-period', type=int, default=10_000,
-                        help='lets you set in which regular interval an 8x8 grid is going to be sampled')
 
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'],
                         help='lets you choose a verbosity mode for how much information will be logged.')
+
 
     # ! sampling arguments
     parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
