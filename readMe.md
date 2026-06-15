@@ -11,7 +11,6 @@
         2. **automatic scaling** as described above
         3. **bf16** a standard developed by google which has the same footprint as fp16 (2Bytes) but uses a 8 exponent bits instead of the fp16 5 exponent bits
 
-
 ### Good to have
 
 In VsCode I recommend to install the extension **Colorful Comments**, as I tried to provide hints and else throughout the code, which are a lot more visible if they can be discerned via color.
