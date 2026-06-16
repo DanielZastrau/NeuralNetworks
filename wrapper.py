@@ -21,21 +21,24 @@ if __name__ == "__main__":
     # ! 1000 epochs to allow enough time for both patience mechanisms to terminate. This is only an upper bound
     # * We adopt the training protocoll of "2025 - Duong et al - Telegraphers" which just trains for 400k iterations
     parser.add_argument('--training-iterations', type=int, default=400_000,
-                        help='specifies the amount of epochs in training, and which model to use in sampling and eval')
+                        help='specifies the amount of epochs in training')
     parser.add_argument('--training-logging-period', type=int, default=1_000,
                         help='lets you set the regular interval where the process sends you a lifesign')
     parser.add_argument('--training-use-early-halting', type=bool, default=False)
     # * batch sizes of 128 seem to be the standard, see:
     # * "2025 - Duong et al - Telegraphers"
     # * "2025 - Han et al DistillKac"
-    parser.add_argument('--training-batch-size', type=int, default=128,
-                        help='only needed for training')
+    parser.add_argument('--training-batch-size', type=int, default=128)
     
 
     parser.add_argument('--training-evaluation-period-loss', type=int, default=2_000)
-    parser.add_argument('--training-evaluation-period-grid', type=int, default=10_000)
-    parser.add_argument('--training-evaluation-period-fid', type=int, default=50_000)
 
+    parser.add_argument('--training-evaluation-period-grid', type=int, default=10_000)
+    parser.add_argument('--training-evaluation-period-grid-num-steps', type=int, default=1_024)
+
+    parser.add_argument('--training-evaluation-period-fid', type=int, default=50_000)
+    parser.add_argument('--training-evaluation-period-fid-num-samples', type=int, default=2_000)
+    parser.add_argument('--training-evaluation-period-fid-num-steps', type=int, default=1_024)
 
     # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
     # ! these let you configure the behavior and patience of the early halting mechanism

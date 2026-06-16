@@ -206,14 +206,18 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
 
         # =========================================================================================
+        # ! periodic checking
+        # =========================================================================================
 
 
         # regularly sample a small grid to check progress
         if (iteration + 1) % args.training_evaluation_period_grid == 0:
             tmp_mode = args.sampling_mode
-            tmp_num = args.sampling_num_samples
+            tmp_num_samples = args.sampling_num_samples
+            tmp_num_steps = args.sampling_num_steps
             args.sampling_mode = '8x8'
             args.sampling_num_samples = 64
+            args.sampling_num_steps = args.training_evaluation_period_grid_num_steps
 
             tmp_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
             if args.where == 'cluster':
@@ -236,7 +240,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             )
 
             args.sampling_mode = tmp_mode
-            args.sampling_num_samples = tmp_num
+            args.sampling_num_samples = tmp_num_samples
+            args.sampling_num_steps = tmp_num_steps
 
             print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {tmp_save_path}')
 
@@ -255,8 +260,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                     model=ema_model,
                     data=data,
                     sampler=sampler,
-                    num_samples=args.training_stage2_samples,
-                    num_steps=args.training_stage2_num_steps,
+                    num_samples=args.training_evaluation_period_fid_num_samples,
+                    num_steps=args.training_evaluation_period_fid_num_steps,
                     reversal_fns=reversal_fns
                 )
                 generated_ds = Uint8Dataset(to_uint8_rgb(samples).detach().cpu())
@@ -275,6 +280,8 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 print(f"Tested the ema model. FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 
 
+        # =========================================================================================
+        # ! Early halting.
         # =========================================================================================
 
 
