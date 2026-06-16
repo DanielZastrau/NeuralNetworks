@@ -15,11 +15,15 @@ from Cluster.utils.reversals import Reversal
 from Cluster.sampling import sample, sample_wrapper
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
+corruption_counter = 0
+
 def train(args: argparse.Namespace, x_batch: torch.Tensor,
           model: torch.nn.Module, ema_model: AveragedModel,
           loss_fn: LossFns, optimizer: torch.optim.Optimizer,
           scheduler: torch.optim.lr_scheduler.LRScheduler, scaler: torch.amp.GradScaler):
     
+    global corruption_counter
+
     device_type = 'cuda' if torch.cuda.is_available() else 'cpu'
     device = torch.device(device_type)
 
@@ -47,7 +51,14 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
             for name, param in model.named_parameters():
                 if param.grad is not None and not torch.isfinite(param.grad).all():
                     print(f"NaN/Inf gradient in layer: {name}")
-            raise RuntimeError('Encountered corruption. Stopping the training.')
+
+            # if there was an invalid training step 10 times in a row stop
+            if corruption_counter != 10:
+                corruption_counter += 1
+            else:
+                raise RuntimeError('Encountered corruption. Stopping the training.')
+        else:
+            corruption_counter = 0
 
     # Step optimizer and scaler
     scale_before = scaler.get_scale()
@@ -163,6 +174,14 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     target_decay = 0.9999
     ema_model = AveragedModel(model, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
 
+    # Setup periodic checkpointing wrt loss
+    best_loss = float('inf')
+    loss_save_path = ''
+
+    # Setup periodic checkpointing wrt fid
+    best_score = float('inf')
+    score_save_path = ''
+
     # Setup Phase 1: Loss-based checkpointing
     best_test_loss = float('inf')
     counter_no_improve = 0
@@ -248,12 +267,25 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
         if not args.training_use_early_halting:
             if (iteration + 1) % args.training_evaluation_period_loss == 0:
-                # evaluate just the ema model
+
                 ema_loss = test(args, test_dataloader, ema_model, loss_fn)
                 if args.training_verbosity == 'verbose':
                     print(f'Tested the ema model. Loss    {ema_loss}.')
 
+                if ema_loss < best_loss:
+                    best_test_loss = ema_loss
+
+                    # clean up last checkpoint,
+                    if loss_save_path:
+                        os.remove(loss_save_path)
+                    loss_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_loss{ema_loss:.8f}.pth'
+
+                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                    torch.save(best_model_state, loss_save_path)
+                    print(f"saved best loss model to:  {loss_save_path},    loss {ema_loss}")
+
             if (iteration + 1) % args.training_evaluation_period_fid == 0:
+
                 ema_model.eval()
                 samples = sample(
                     args=args,
@@ -266,7 +298,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 )
                 generated_ds = Uint8Dataset(to_uint8_rgb(samples).detach().cpu())
 
-                # calculate the fid score
                 metrics = torch_fidelity.calculate_metrics(
                     input1=real_ds,
                     input2=generated_ds,
@@ -275,9 +306,21 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                     cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
                     verbose=False,
                 )
-                fid_score = metrics['frechet_inception_distance']
+                ema_score = metrics['frechet_inception_distance']
+                if args.training_verbosity == 'verbose':
+                    print(f"Tested the ema model. FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
 
-                print(f"Tested the ema model. FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
+                if ema_score < best_score:
+                    best_score = ema_score
+
+                    # clean up last checkpoint,
+                    if score_save_path:
+                        os.remove(score_save_path)
+                    score_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_score{ema_score:.2f}.pth'
+
+                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                    torch.save(best_model_state, score_save_path)
+                    print(f"saved best score model to:  {score_save_path},    loss {ema_score}")
 
 
         # =========================================================================================
@@ -301,8 +344,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
                     # Extract and store the state dict of the superior model
                     uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                    best_model_state = copy.deepcopy(uncompiled_model.state_dict())
-                    best_model_type = "EMA"
                     torch.save(best_model_state, save_path)
                     print(f"saved best model to:  {save_path},    loss {ema_loss}")
                 else:
