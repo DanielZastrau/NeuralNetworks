@@ -308,7 +308,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 )
                 ema_score = metrics['frechet_inception_distance']
                 if args.training_verbosity == 'verbose':
-                    print(f"Tested the ema model. FID Score ({args.training_stage2_samples} samples): {fid_score:.4f}")
+                    print(f"Tested the ema model. FID Score ({args.training_evaluation_period_fid_num_samples} samples): {ema_score:.4f}")
 
                 if ema_score < best_score:
                     best_score = ema_score
