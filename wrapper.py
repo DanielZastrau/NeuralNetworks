@@ -170,10 +170,6 @@ if __name__ == "__main__":
         # * as was done in "2025 - Duong et al - Telegraphers"
         args.time_truncation = 0
 
-        # * as was done in "2025 - Duong et al - Telegraphers"
-        args.sampling_num_steps = 100
-        args.eval_num_steps = 100
-
     args.lr = args.lr * (args.training_batch_size / 128)
 
     print('-'*100)
