@@ -238,15 +238,15 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             args.sampling_num_samples = 64
             args.sampling_num_steps = args.training_evaluation_period_grid_num_steps
 
-            tmp_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
+            grid_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
             if args.where == 'cluster':
                 if not os.path.exists('/work/zastrau/samples'):
                     os.mkdir(f'/work/zastrau/samples')
-                tmp_save_path = f'/work/zastrau/samples/{tmp_save_path}'
+                grid_save_path = f'/work/zastrau/samples/{grid_save_path}'
             else:    # args.where == 'local':
                 if not os.path.exists(f'./samples'):
                     os.mkdir('./samples')
-                tmp_save_path = f'./samples/{tmp_save_path}'
+                grid_save_path = f'./samples/{grid_save_path}'
 
             ema_model.eval()
             sample_wrapper(
@@ -255,14 +255,14 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 data=data,
                 sampler=sampler,
                 reversal_fns=reversal_fns,
-                save_path=tmp_save_path,
+                save_path=grid_save_path,
             )
 
             args.sampling_mode = tmp_mode
             args.sampling_num_samples = tmp_num_samples
             args.sampling_num_steps = tmp_num_steps
 
-            print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {tmp_save_path}')
+            print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {grid_save_path}')
 
 
         if not args.training_use_early_halting:

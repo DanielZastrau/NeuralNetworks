@@ -46,7 +46,6 @@ if __name__ == "__main__":
                         help='every x iterations the model is going to be evaluated on the test set')
     parser.add_argument('--training-stage1-patience', type=int, default=40,
                         help='allow for x-many non improvements of loss')
-    # * matches the setup of "2025 - Duong et al - Telegraphers"
     parser.add_argument('--training-stage2-period', type=int, default=10_000,
                         help='every x iterations the model is going to be evaluated on the fid score')
     parser.add_argument('--training-stage2-patience', type=int, default=40,
