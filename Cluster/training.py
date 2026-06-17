@@ -273,7 +273,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                     print(f'Tested the ema model. Loss    {ema_loss}.')
 
                 if ema_loss < best_loss:
-                    best_test_loss = ema_loss
+                    best_loss = ema_loss
 
                     # clean up last checkpoint,
                     if loss_save_path:
