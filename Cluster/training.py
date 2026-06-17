@@ -20,7 +20,7 @@ corruption_counter = 0
 def train(args: argparse.Namespace, x_batch: torch.Tensor,
           model: torch.nn.Module, ema_model: AveragedModel,
           loss_fn: LossFns, optimizer: torch.optim.Optimizer,
-          scheduler: torch.optim.lr_scheduler.LRScheduler, scaler: torch.amp.GradScaler):
+          scheduler: torch.optim.lr_scheduler.LRScheduler):
     
     global corruption_counter
 
@@ -38,10 +38,7 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
         print(f'Loss  {loss.item()}')
 
     # Scales the loss and completes the backward pass
-    scaler.scale(loss).backward()
-
-    # Unscale gradients before clipping
-    scaler.unscale_(optimizer)
+    loss.backward()
 
     # Capture and log the norm before clipping
     grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -59,23 +56,11 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
                 raise RuntimeError('Encountered corruption. Stopping the training.')
         else:
             corruption_counter = 0
-
-    # Step optimizer and scaler
-    scale_before = scaler.get_scale()
-    # Log the current scale factor
-    if args.training_verbosity == 'verbose':
-        print(f'Scaler Scale: {scale_before}')
     
     # Step optimizer and scaler
-    scaler.step(optimizer)
-    scaler.update()
-    
-    # Only step the scheduler if the optimizer actually updated the weights
-    if scaler.get_scale() >= scale_before:
-        scheduler.step()
-
-        # Update EMA model parameters
-        ema_model.update_parameters(model)
+    optimizer.step()
+    scheduler.step()
+    ema_model.update_parameters(model)
     
     if args.training_verbosity == 'verbose':
         print(f'Learning rate:  {scheduler.get_last_lr()}')
@@ -114,12 +99,16 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
     # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
-    optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.02)
+
+    if args.which == 'diffusion':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.02)
+    elif args.which in ['kac', 'mmd']:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.01)
+
 
     if not args.model:    # ! I.e. if a new model is trained 
-        # Define warm up steps, e.g. 400k * 0.05 = 4k * 5 = 20k
+        # Define warm up steps, e.g. 400k * 0.05 = 4k * 0.05 = 20k
         warmup_steps = int(args.training_iterations * 0.05)
-
 
         # Warmup: Linearly increase LR from near-zero (target_lr * 1e-8) to target_lr
         warmup_scheduler = LinearLR(
@@ -129,34 +118,17 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             total_iters=warmup_steps
         )
 
-        if args.which in ['kac', 'mmd']:
-            print(f'Using warmup and constant learning rate scheduler')
-            # Constant learning rate after warmup
-            constant_scheduler = ConstantLR(
-                optimizer,
-                factor=1.0,
-                total_iters=1
-            )
+        print(f'Using warmup and cosine annealing learning rate scheduler.')
+        cosine_annealing = CosineAnnealingLR(
+            optimizer,
+            T_max=(args.training_iterations - warmup_steps),
+            eta_min=1e-6
+        )
 
-            # Chain the schedulers
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, constant_scheduler],
-                milestones=[warmup_steps]
-            )
-
-        elif args.which == 'diffusion':
-            print(f'Using warmup and cosine annealing learning rate scheduler.')
-            cosine_annealing = CosineAnnealingLR(
-                optimizer,
-                T_max=(args.training_iterations - warmup_steps),
-                eta_min=1e-6
-            )
-
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, cosine_annealing],
-                milestones=[warmup_steps]
+        scheduler = SequentialLR(
+            optimizer,
+            schedulers=[warmup_scheduler, cosine_annealing],
+            milestones=[warmup_steps]
             )
 
     else:    # ! I.e. if a pre-trained model is passed
@@ -166,9 +138,6 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             factor=0.5,
             total_iters=1
         )
-
-    # Initialize the Gradient Scaler for AMP
-    scaler = torch.amp.GradScaler(device='cuda' if torch.cuda.is_available() else 'cpu')
 
     # Initialize the EMA Model with dynamic warmup
     target_decay = 0.9999
@@ -220,8 +189,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
         train(args=args, x_batch=x_batch, model=model,
                 ema_model=ema_model, loss_fn=loss_fn,
-                optimizer=optimizer, scheduler=scheduler,
-                scaler=scaler)
+                optimizer=optimizer, scheduler=scheduler)
 
 
         # =========================================================================================
@@ -240,13 +208,13 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
 
             grid_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
             if args.where == 'cluster':
-                if not os.path.exists('/work/zastrau/samples'):
-                    os.mkdir(f'/work/zastrau/samples')
-                grid_save_path = f'/work/zastrau/samples/{grid_save_path}'
+                if not os.path.exists(f'/work/zastrau/samples/{args.which}'):
+                    os.mkdir(f'/work/zastrau/samples/{args.which}')
+                grid_save_path = f'/work/zastrau/samples/{args.which}/{grid_save_path}'
             else:    # args.where == 'local':
-                if not os.path.exists(f'./samples'):
-                    os.mkdir('./samples')
-                grid_save_path = f'./samples/{grid_save_path}'
+                if not os.path.exists(f'./samples/{args.which}'):
+                    os.mkdir(f'./samples/{args.which}')
+                grid_save_path = f'./samples/{args.which}/{grid_save_path}'
 
             ema_model.eval()
             sample_wrapper(
