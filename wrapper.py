@@ -30,7 +30,6 @@ if __name__ == "__main__":
     # * "2025 - Han et al DistillKac"
     parser.add_argument('--training-batch-size', type=int, default=128)
     
-
     parser.add_argument('--training-evaluation-period-loss', type=int, default=2_000)
 
     parser.add_argument('--training-evaluation-period-grid', type=int, default=10_000)
@@ -54,7 +53,8 @@ if __name__ == "__main__":
                         help='lets you set a different sample size on which the fid checkpoints are calculated')
     parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
                         help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
-    
+
+    parser.add_argument('--training-optimizer-weight-decay', type=int, default=0.015)
 
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'],
                         help='lets you choose a verbosity mode for how much information will be logged.')

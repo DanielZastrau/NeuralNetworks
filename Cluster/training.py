@@ -100,11 +100,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
     # Initialize optimizer with the TARGET scaled learning rate
     target_lr = args.lr
 
-    if args.which == 'diffusion':
-        optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.02)
-    elif args.which in ['kac', 'mmd']:
-        optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=0.01)
-
+    optimizer = torch.optim.AdamW(model.parameters(), lr=target_lr, weight_decay=args.training_optimizer_weight_decay)
 
     if not args.model:    # ! I.e. if a new model is trained 
         # Define warm up steps, e.g. 400k * 0.05 = 4k * 0.05 = 20k
