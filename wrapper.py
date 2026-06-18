@@ -178,7 +178,7 @@ if __name__ == "__main__":
     print(f'\nData directory:  {args.data_dir}')
 
     import torch
-    torch.set_float32_matmul_precision('high')
+    torch.set_float32_matmul_precision('highest')
 
     # Determine device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -252,6 +252,7 @@ if __name__ == "__main__":
     if args.where == 'cluster':
         from Cluster.utils.modelGetter import model_getter
         model = model_getter(args=args).to(device)
+        model.convert_to_fp32()
 
         size = 'large'
     else:    # args.where == 'local'

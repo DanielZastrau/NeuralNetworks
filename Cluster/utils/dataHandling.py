@@ -90,7 +90,7 @@ class DataProvider():
             batch_size=self.args.training_batch_size,
             shuffle=True,
             num_workers=1,
-            pin_memory=True if self.args.where == 'cluster' else False
+            pin_memory=True if self.args.where == 'cluster' else False,
         )
         test_dataloader = DataLoader(    # type: ignore
             test_data,
