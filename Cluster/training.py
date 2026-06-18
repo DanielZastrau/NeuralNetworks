@@ -179,9 +179,11 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
         # the iterator does not need to be initialized every time
         try:
             x_batch, _ = next(train_iter)
+            x_batch = x_batch.to(device, dtype=torch.float32)
         except StopIteration:
             train_iter = iter(train_dataloader)
             x_batch, _ = next(train_iter)
+            x_batch = x_batch.to(device, dtype=torch.float32)
 
         train(args=args, x_batch=x_batch, model=model,
                 ema_model=ema_model, loss_fn=loss_fn,

@@ -10,7 +10,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from Cluster.utils.fp16_util import convert_module_to_f16, convert_module_to_f32
+from Cluster.utils.fp16_util import convert_module_to_f32
 from Cluster.utils.nn_utils import (
     checkpoint,
     conv_nd,
@@ -620,14 +620,6 @@ class UNetModel(nn.Module):
             zero_module(conv_nd(dims, input_ch, out_channels, 3, padding=1)),
         )
 
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
-        self.output_blocks.apply(convert_module_to_f16)
-
     def convert_to_fp32(self):
         """
         Convert the torso of the model to float32.
@@ -859,12 +851,7 @@ class EncoderUNetModel(nn.Module):
         else:
             raise NotImplementedError(f"Unexpected {pool} pooling")
 
-    def convert_to_fp16(self):
-        """
-        Convert the torso of the model to float16.
-        """
-        self.input_blocks.apply(convert_module_to_f16)
-        self.middle_block.apply(convert_module_to_f16)
+
 
     def convert_to_fp32(self):
         """
