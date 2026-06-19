@@ -54,7 +54,8 @@ if __name__ == "__main__":
     parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
                         help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
 
-    parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.015)
+    parser.add_argument('--training-optimizer', type=str, default="adam", choices=['adam', 'adamW'])
+    parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01)
 
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'],
                         help='lets you choose a verbosity mode for how much information will be logged.')
