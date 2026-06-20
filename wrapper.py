@@ -57,6 +57,8 @@ if __name__ == "__main__":
     parser.add_argument('--training-optimizer', type=str, default="adam", choices=['adam', 'adamW'])
     parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01)
 
+    parser.add_argument('--training-scheduler', type=str, default='cosine', choices=['cosine', 'constant'])
+
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'],
                         help='lets you choose a verbosity mode for how much information will be logged.')
 
@@ -255,10 +257,10 @@ if __name__ == "__main__":
         model = model_getter(args=args).to(device)
         model.convert_to_fp32()
 
-        size = 'large'
     else:    # args.where == 'local'
         from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
+
     print(f'\n Instantiated the model.')
 
     if args.model:

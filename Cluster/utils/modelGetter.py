@@ -7,10 +7,11 @@ def model_getter(args: argparse.Namespace):
     data = DataProvider(args=args)
 
     return UNetModel(
-            # * Models the parameters of DistillKac
+            # * Models the parameters of "2025 - Duong et al - Telegraphers"
             image_size=data.data_dims.size, in_channels=data.data_dims.channels,
             out_channels=data.data_dims.channels,
-            model_channels=256, num_res_blocks=3,
-            attention_resolutions=[16, 8], num_heads=4,
-            num_head_channels=64, channel_mult=(1, 2, 2, 3)
+            model_channels=128, num_res_blocks=2,
+            attention_resolutions=(16,), num_heads=4,
+            num_head_channels=64, channel_mult=(1, 2, 2, 2),
+            dropout=0.1
         )

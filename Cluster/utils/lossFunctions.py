@@ -81,16 +81,16 @@ class LossFns():
         t = torch.rand(B, 1, device=device) * self.args.T
 
         # data schedule
-        f_t = Kac.f(t, self.args.T, self.args.kac_f)
-        df_t = Kac.df(t, self.args.T, self.args.kac_f)
+        f_t = Kac.f(t.squeeze(1), self.args.T, self.args.kac_f).unsqueeze(1)
+        df_t = Kac.df(t.squeeze(1), self.args.T, self.args.kac_f).unsqueeze(1)
 
         # noise schedule
-        g_t = Kac.g(t, self.args.T, self.args.kac_g)
+        g_t = Kac.g(t.squeeze(1), self.args.T, self.args.kac_g)
         dg_t = Kac.dg(t, self.args.T, self.args.kac_g)
         
         # compute x corrupted -----
         # Sample noise using g(t)
-        tau: torch.Tensor = self.sampler.sample(g_t, dim=self.data.data_dims.total_dimension).to(device).view(B, -1)
+        tau: torch.Tensor = self.sampler.sample(g_t, dim=self.data.data_dims.total_dimension).to(device)
 
         # use it to corrupt x0 fully, according to the mean reverting process
         x_corrupted = f_t * x_0 + tau
@@ -100,7 +100,7 @@ class LossFns():
 
         with torch.no_grad():
             # Compute velocity using g(t)
-            velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t, a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
+            velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t.unsqueeze(1), a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
 
         # Model is conditioned on original time t
         pred = model(x_corrupted.view(

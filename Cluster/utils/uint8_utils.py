@@ -1,5 +1,8 @@
 import torch
 from torch.utils.data import Dataset
+import torch.nn.functional as F
+
+from Cluster.utils.dataHandling import DataProvider
 
 class Uint8DatasetWrapper(Dataset):
     """
@@ -31,9 +34,9 @@ class Uint8Dataset(Dataset):
         return self.data[idx]
 
 
-def to_uint8_rgb(imgs: torch.Tensor) -> torch.Tensor:
+def to_uint8_rgb(imgs: torch.Tensor, data: DataProvider) -> torch.Tensor:
     imgs = (imgs + 1) * 0.5
     if imgs.shape[1] == 1:
         imgs = imgs.repeat(1, 3, 1, 1)
-    # Direct quantization without intermediate resizing
+    imgs = F.interpolate(imgs, size=(data.data_dims.height, data.data_dims.width), mode='bilinear', align_corners=False)
     return (imgs * 255).round().clamp(0, 255).to(torch.uint8)
