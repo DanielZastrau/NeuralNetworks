@@ -26,7 +26,7 @@ def evaluate_fid(args: argparse.Namespace, data: DataProvider, model: torch.nn.M
         reversal_fns=reversal_fns,
         num_steps=args.eval_num_steps
     )
-    generated_ds = Uint8Dataset(to_uint8_rgb(samples).cpu())
+    generated_ds = Uint8Dataset(to_uint8_rgb(samples, data).cpu())
 
     print(f"Computing FID score via torch_fidelity using {args.eval_num_samples} samples...")
     

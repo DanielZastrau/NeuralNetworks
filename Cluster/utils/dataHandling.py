@@ -90,13 +90,13 @@ class DataProvider():
             batch_size=self.args.training_batch_size,
             shuffle=True,
             num_workers=1,
-            pin_memory=True if self.args.where == 'cluster' else False,
+            drop_last=True,
         )
         test_dataloader = DataLoader(    # type: ignore
             test_data,
             batch_size=self.args.training_batch_size,
             num_workers=1,
-            pin_memory=True if self.args.where == 'cluster' else False
+            drop_last=True,
         )
 
         return train_dataloader, test_dataloader
@@ -125,7 +125,7 @@ class DataProvider():
 
         real_images = []
         for (imgs, _) in dataset_loader:
-            real_images.append(to_uint8_rgb(imgs.to(device).cpu()))
+            real_images.append(to_uint8_rgb(imgs.to(device).cpu(), self))
             if sum(x.size(0) for x in real_images) >= self.args.eval_num_samples:
                 break
         real_images = torch.cat(real_images)[:self.args.eval_num_samples].cpu()
@@ -152,12 +152,12 @@ class DataProvider():
             real_ds,
             batch_size=self.args.training_batch_size * 4,
             shuffle=False,
-            num_workers=1
+            num_workers=1,
         )
 
         real_images = []
         for (imgs, _) in real_ds_loader:
-            real_images.append(to_uint8_rgb(imgs.to(device)))
+            real_images.append(to_uint8_rgb(imgs.to(device), self))
             if sum(x.size(0) for x in real_images) >= self.args.training_stage2_samples:
                 break
         real_images = torch.cat(real_images)[:self.args.training_stage2_samples].cpu()

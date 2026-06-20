@@ -2,7 +2,6 @@
 
 from abc import abstractmethod
 
-import argparse
 import math
 
 import numpy as np
@@ -437,7 +436,7 @@ class UNetModel(nn.Module):
         out_channels,
         num_res_blocks,
         attention_resolutions,
-        dropout=0,
+        dropout:float=0,
         channel_mult=(1, 2, 4, 8),
         conv_resample=True,
         dims=2,
