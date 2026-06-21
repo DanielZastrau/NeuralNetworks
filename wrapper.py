@@ -178,8 +178,6 @@ if __name__ == "__main__":
     print(args)
     print('-'*100)
 
-    print(f'\nData directory:  {args.data_dir}')
-
     import torch
     torch.set_float32_matmul_precision('highest')
 
