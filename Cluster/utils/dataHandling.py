@@ -71,14 +71,14 @@ class DataProvider():
         transform = self.transform()
 
         training_data = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
+            root='/work/zastrau/cifar10' if self.args.where == 'cluster' else "./data",
             train=True,
             download=True,
             transform=transform,
         )
 
         test_data = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
+            root='/work/zastrau/cifar10' if self.args.where == 'cluster' else "./data",
             train=False,
             download=True,
             transform=transform
@@ -110,7 +110,7 @@ class DataProvider():
         transform = self.transform()
 
         eval_set = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else './data',
+            root='/work/zastrau/cifar10' if self.args.where == 'cluster' else './data',
             train=True,
             download=True,
             transform=transform
@@ -142,7 +142,7 @@ class DataProvider():
         transform = self.transform()
 
         real_ds = datasets.CIFAR10(
-            root=self.args.data_dir if self.args.where == 'cluster' else "./data",
+            root='/work/zastrau/cifar10' if self.args.where == 'cluster' else "./data",
             train=True,
             download=True,
             transform=transform
