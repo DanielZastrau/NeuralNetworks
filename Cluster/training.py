@@ -89,9 +89,7 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
     return avg_test_loss
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
-                     reversal_fns: Reversal, model: torch.nn.Module,
-                     data: DataProvider, save_path: str):
+def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider):
 
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -138,11 +136,15 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             total_iters=1
         )
 
+    # Setup periodic sampling of a grid
+    grid_reversal_fn = Reversal(args=args, which='grid')
+
     # Setup periodic checkpointing wrt loss
     best_loss: float = float('inf')
     loss_save_path = ''
 
     # Setup periodic checkpointing wrt fid
+    score_reversal_fn = Reversal(args=args, which='fid')
     best_score: float = float('inf')
     score_save_path = ''
 
@@ -206,7 +208,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
                 model=ema_model,
                 data=data,
                 sampler=sampler,
-                reversal_fns=reversal_fns,
+                reversal_fns=grid_reversal_fn,
                 save_path=grid_save_path,
             )
 
@@ -217,61 +219,67 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns,
             print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {grid_save_path}')
 
 
-        if not args.training_use_early_halting:
-            if (iteration + 1) % args.training_evaluation_period_loss == 0:
+        if (iteration + 1) % args.training_evaluation_period_loss == 0:
 
-                ema_loss = test(args, test_dataloader, ema_model, loss_fn)
-                if args.training_verbosity == 'verbose':
-                    print(f'Tested the ema model. Loss    {ema_loss}.')
+            ema_loss = test(args, test_dataloader, ema_model, loss_fn)
+            if args.training_verbosity == 'verbose':
+                print(f'Tested the ema model. Loss    {ema_loss}.')
 
-                if ema_loss < best_loss:
-                    best_loss = ema_loss
+            if ema_loss < best_loss:
+                best_loss = ema_loss
 
-                    # clean up last checkpoint,
-                    if loss_save_path:
-                        os.remove(loss_save_path)
-                    loss_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_loss{ema_loss:.8f}.pth'
+                # clean up last checkpoint,
+                if loss_save_path:
+                    os.remove(loss_save_path)
+                loss_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_loss{ema_loss:.8f}.pth'
 
-                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                    torch.save(uncompiled_model, loss_save_path)
-                    print(f"saved best loss model to:  {loss_save_path},    loss {ema_loss}")
+                uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                torch.save(uncompiled_model, loss_save_path)
+                print(f"saved best loss model to:  {loss_save_path},    loss {ema_loss}")
 
-            if (iteration + 1) % args.training_evaluation_period_fid == 0:
+        if (iteration + 1) % args.training_evaluation_period_fid == 0:
 
-                ema_model.eval()
-                samples = sample(
-                    args=args,
-                    model=ema_model,
-                    data=data,
-                    sampler=sampler,
-                    num_samples=args.training_evaluation_period_fid_num_samples,
-                    num_steps=args.training_evaluation_period_fid_num_steps,
-                    reversal_fns=reversal_fns
-                )
-                generated_ds = Uint8Dataset(to_uint8_rgb(samples, data).detach().cpu())
+            tmp_samples = args.sampling_num_samples
+            tmp_num_steps = args.sampling_num_steps
+            args.sampling_num_samples = args.training_evaluation_period_fid_num_samples
+            args.sampling_num_steps = args.training_evaluation_period_fid_num_steps
 
-                metrics = torch_fidelity.calculate_metrics(
-                    input1=real_ds,
-                    input2=generated_ds,
-                    batch_size=256,
-                    fid=True,
-                    cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
-                    verbose=False,
-                )
-                ema_score = metrics['frechet_inception_distance']
-                if args.training_verbosity == 'verbose':
-                    print(f"Tested the ema model. FID Score ({args.training_evaluation_period_fid_num_samples} samples): {ema_score:.4f}")
+            ema_model.eval()
+            samples = sample(
+                args=args,
+                model=ema_model,
+                data=data,
+                sampler=sampler,
+                reversal_fns=score_reversal_fn
+            )
+            generated_ds = Uint8Dataset(to_uint8_rgb(samples, data).detach().cpu())
 
-                if ema_score < best_score:
-                    best_score = ema_score
+            metrics = torch_fidelity.calculate_metrics(
+                input1=real_ds,
+                input2=generated_ds,
+                batch_size=256,
+                fid=True,
+                cuda=(('cuda' if torch.cuda.is_available() else 'cpu') == 'cuda'),
+                verbose=False,
+            )
+            ema_score = metrics['frechet_inception_distance']
 
-                    # clean up last checkpoint,
-                    if score_save_path:
-                        os.remove(score_save_path)
-                    score_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_score{ema_score:.2f}.pth'
+            args.sampling_num_samples = tmp_samples
+            args.sampling_num_steps = tmp_num_steps
 
-                    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                    torch.save(uncompiled_model, score_save_path)
-                    print(f"saved best score model to:  {score_save_path},    loss {ema_score}")
+            if args.training_verbosity == 'verbose':
+                print(f"Tested the ema model. FID Score ({args.training_evaluation_period_fid_num_samples} samples): {ema_score:.4f}")
+
+            if ema_score < best_score:
+                best_score = ema_score
+
+                # clean up last checkpoint,
+                if score_save_path:
+                    os.remove(score_save_path)
+                score_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_score{ema_score:.2f}.pth'
+
+                uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+                torch.save(uncompiled_model, score_save_path)
+                print(f"saved best score model to:  {score_save_path},    loss {ema_score}")
 
     print("Done!")

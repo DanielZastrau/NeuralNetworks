@@ -14,17 +14,19 @@ def evaluate_fid(args: argparse.Namespace, data: DataProvider, model: torch.nn.M
                  sampler: TorchKacConstantSampler | None, reversal_fns: Reversal) -> float:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     
-    # Extract the datasets from the loaders provided by the existing data pipeline
     cifar10_ds = data.get_dataset_for_full_eval()
+
+    tmp_num_samples = args.sampling_num_samples
+    tmp_num_steps = args.sampling_num_steps
+    args.sampling_num_samples = args.eval_num_samples
+    args.sampling_num_steps = args.eval_num_steps
 
     samples = sample(
         args=args,
         model=model,
         data=data,
         sampler=sampler,
-        num_samples=args.eval_num_samples,
         reversal_fns=reversal_fns,
-        num_steps=args.eval_num_steps
     )
     generated_ds = Uint8Dataset(to_uint8_rgb(samples, data).cpu())
 
@@ -41,6 +43,9 @@ def evaluate_fid(args: argparse.Namespace, data: DataProvider, model: torch.nn.M
 
     fid_score = metrics['frechet_inception_distance']
     
+    args.sampling_num_samples = tmp_num_samples
+    args.sampling_num_steps = tmp_num_steps
+
     return float(fid_score)
 
 
