@@ -158,8 +158,8 @@ class DataProvider():
         real_images = []
         for (imgs, _) in real_ds_loader:
             real_images.append(to_uint8_rgb(imgs.to(device), self))
-            if sum(x.size(0) for x in real_images) >= self.args.training_stage2_samples:
+            if sum(x.size(0) for x in real_images) >= self.args.training_evaluation_period_fid_num_samples:
                 break
-        real_images = torch.cat(real_images)[:self.args.training_stage2_samples].cpu()
+        real_images = torch.cat(real_images)[:self.args.training_evaluation_period_fid_num_samples].cpu()
         real_ds = Uint8Dataset(real_images)
         return real_ds
