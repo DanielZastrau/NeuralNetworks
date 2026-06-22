@@ -286,8 +286,16 @@ if __name__ == "__main__":
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {args.eval_model}.')
 
-        model.load_state_dict(torch.load(args.eval_model, map_location=device))
-        print('\n Loaded the state dict.')
+        # Load the checkpoint file
+        checkpoint = torch.load(args.eval_model, map_location=device)
+
+        # Check if it's a state_dict (a dictionary) or the full model object
+        if isinstance(checkpoint, dict):
+            model.load_state_dict(checkpoint)
+            print('\nLoaded the state dict.')
+        else:    # ! for wrongly saved older checkpoints
+            model = checkpoint
+            print('\nLoaded the full model object directly.')
 
         from Cluster.utils.reversals import Reversal
         reversal_fns = Reversal(args=args, which='eval')

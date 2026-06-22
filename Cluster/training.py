@@ -234,7 +234,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
                 loss_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_loss{ema_loss:.8f}.pth'
 
                 uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                torch.save(uncompiled_model, loss_save_path)
+                torch.save(uncompiled_model.state_dict(), loss_save_path)
                 print(f"saved best loss model to:  {loss_save_path},    loss {ema_loss}")
 
         if (iteration + 1) % args.training_evaluation_period_fid == 0:
@@ -279,7 +279,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
                 score_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_score{ema_score:.2f}.pth'
 
                 uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
-                torch.save(uncompiled_model, score_save_path)
+                torch.save(uncompiled_model.state_dict(), score_save_path)
                 print(f"saved best score model to:  {score_save_path},    loss {ema_score}")
 
     print("Done!")
