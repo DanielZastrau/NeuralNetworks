@@ -14,35 +14,53 @@ class Reversal():
     # ! If used in the distillation module, only explicit methods with fixed timesteps are to be specified,
     # ! since distillation does not exactly work with adaptive solvers.
 
-    def __init__(self, args: argparse.Namespace):
+    def __init__(self, args: argparse.Namespace, which: str):
         self.args = args
             
-        if args.distill_teacher_sampler == 'ee':
-            self.teacher_integrate = self.explicit_euler
-        elif args.distill_teacher_sampler == 'rk2':
-            self.teacher_integrate = self.rk2
-        elif args.distill_teacher_sampler == 'em':
-            if args.which != 'diffusion':
-                raise ValueError('em is only allowed for diffusion')
-            else:
-                self.teacher_integrate = self.euler_maruyama
-        elif args.distill_teacher_sampler == 'ab2':
-            raise NotImplementedError("Use 'ee' or 'rk2' for Kac distillation.")
-        elif args.distill_teacher_sampler == 'rk45':
-            raise ValueError('rk45 is not allowed for distillation')
+        if which == 'grid':
+            if args.training_evaluation_period_grid_sampler == 'ee':
+                self.integrator = self.explicit_euler
+            elif args.training_evaluation_period_grid_sampler == 'rk2':
+                self.integrator = self.rk2
+            elif args.training_evaluation_period_grid_sampler == 'em' and args.which == 'diffusion':
+                self.integrator = self.euler_maruyama
 
-        # Route the student integration method
-        # Both currently share the explicit Euler step structure from Han et al. 2025
+        elif which == 'fid':
+            if args.training_evaluation_period_fid_sampler == 'ee':
+                self.integrator = self.explicit_euler
+            elif args.training_evaluation_period_fid_sampler == 'rk2':
+                self.integrator = self.rk2
+            elif args.training_evaluation_period_fid_sampler == 'em' and args.which == 'diffusion':
+                self.integrator = self.euler_maruyama
+
+        elif which == 'sample':
+            if args.sampling_sampler == 'ee':
+                self.integrator = self.explicit_euler
+            elif args.sampling_sampler == 'rk2':
+                self.integrator = self.rk2
+            elif args.sampling_sampler == 'em' and args.which == 'diffusion':
+                self.integrator = self.euler_maruyama
+
+        elif which == 'eval':
+            if args.eval_sampler == 'ee':
+                self.integrator = self.explicit_euler
+            elif args.eval_sampler == 'rk2':
+                self.integrator = self.rk2
+            elif args.eval_sampler == 'em' and args.which == 'diffusion':
+                self.integrator = self.euler_maruyama
+
+        elif which == 'distill':
+            if args.distill_teacher_sampler == 'ee':
+                self.integrator = self.explicit_euler
+            elif args.distill_teacher_sampler == 'rk2':
+                self.integrator = self.rk2
+            elif args.distill_teacher_sampler == 'em' and args.which == 'diffusion':
+                self.integrator = self.euler_maruyama
+
         self.student_integrate = self.student_explicit_euler
 
 
-        # TODO: sampler rk45, AB2
-        if args.sampling_sampler == 'ee':
-            self.integrator = self.explicit_euler
-        elif args.sampling_sampler == 'rk2':
-            self.integrator = self.rk2
-        elif args.sampling_sampler == 'em' and args.which == 'diffusion':
-            self.integrator = self.euler_maruyama
+
 
 
     # =============================================================================================

@@ -18,60 +18,40 @@ if __name__ == "__main__":
     
 
     # ! training arguments
-    # ! 1000 epochs to allow enough time for both patience mechanisms to terminate. This is only an upper bound
     # * We adopt the training protocoll of "2025 - Duong et al - Telegraphers" which just trains for 400k iterations
+    # * batch sizes of 128 seem to be the standard, see: "2025 - Duong et al - Telegraphers", "2025 - Han et al DistillKac"
     parser.add_argument('--training-iterations', type=int, default=400_000,
                         help='specifies the amount of epochs in training')
     parser.add_argument('--training-logging-period', type=int, default=1_000,
                         help='lets you set the regular interval where the process sends you a lifesign')
-    parser.add_argument('--training-use-early-halting', type=bool, default=False)
-    # * batch sizes of 128 seem to be the standard, see:
-    # * "2025 - Duong et al - Telegraphers"
-    # * "2025 - Han et al DistillKac"
     parser.add_argument('--training-batch-size', type=int, default=128)
     
     parser.add_argument('--training-evaluation-period-loss', type=int, default=2_000)
 
     parser.add_argument('--training-evaluation-period-grid', type=int, default=10_000)
     parser.add_argument('--training-evaluation-period-grid-num-steps', type=int, default=1_024)
+    parser.add_argument('--training-evaluation-period-grid-sampler', type=str, default='ee', choices=['ee', 'rk2', 'em'], help='EM only for diffusion.')
 
     parser.add_argument('--training-evaluation-period-fid', type=int, default=50_000)
     parser.add_argument('--training-evaluation-period-fid-num-samples', type=int, default=2_000)
     parser.add_argument('--training-evaluation-period-fid-num-steps', type=int, default=1_024)
-
-    # for cifar10s 50k training images, this is about every 3 to 4 epochs with a batch size of 128
-    # ! these let you configure the behavior and patience of the early halting mechanism
-    parser.add_argument('--training-stage1-period', type=int, default=1_000,
-                        help='every x iterations the model is going to be evaluated on the test set')
-    parser.add_argument('--training-stage1-patience', type=int, default=40,
-                        help='allow for x-many non improvements of loss')
-    parser.add_argument('--training-stage2-period', type=int, default=10_000,
-                        help='every x iterations the model is going to be evaluated on the fid score')
-    parser.add_argument('--training-stage2-patience', type=int, default=40,
-                        help='allow for x-many non improvements of fid score')
-    parser.add_argument('--training-stage2-samples', type=int, default=2_000,
-                        help='lets you set a different sample size on which the fid checkpoints are calculated')
-    parser.add_argument('--training-stage2-num-steps', type=int, default=1024,
-                        help='lets you set the number of steps the sampler should take to sample images and generate the fid score')
+    parser.add_argument('--training-evaluation-period-fid-sampler', type=str, default='ee', choices=['ee', 'rk2', 'em'], help='EM only for diffusion.')
 
     parser.add_argument('--training-optimizer', type=str, default="adam", choices=['adam', 'adamW'])
-    parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01)
+    parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01, help='only used for adamW')
 
     parser.add_argument('--training-scheduler', type=str, default='cosine', choices=['cosine', 'constant'])
 
-    parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'],
-                        help='lets you choose a verbosity mode for how much information will be logged.')
+    parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'])
 
 
     # ! sampling arguments
-    parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'rk45', 'ab2', 'em'], default='ee',
-                        help='chose a method to sample with, em is only available for diffusion models.')
+    # * 2025 - Duong et al - Telegraphers Generative Model via Kac Flows, they seem to sample kac with 100 steps
+    parser.add_argument('--sampling-sampler', type=str, choices=['ee', 'rk2', 'em'], default='ee', help='EM only for diffusion.')
     parser.add_argument('--sampling-mode', type=str, choices=['8x8', 'set'], default='set',
                         help='8x8 generates a 8x8 grid of samples to showcase the result, set generates a full set useful for fid evaluation')
     
-    # ! in the case of kac this will be overwritten to 100 steps afterwards to match
-    # * 2025 - Duong et al - Telegraphers Generative Model via Kac Flows
-    parser.add_argument('--sampling-num-steps', type=int, default=8_192,
+    parser.add_argument('--sampling-num-steps', type=int, default=1_024,
                         help='if sampler uses linspace, this specifies the amount of steps. I.e. for diff with SDE, kac with ee or rk2')
     parser.add_argument('--sampling-batch-size', type=int, default=512,
                         help='specifies how many samples are to be processed at the same time. I.e. the tensor shape.')
@@ -89,11 +69,9 @@ if __name__ == "__main__":
 
 
     # ! eval arguments
-    parser.add_argument('--eval-num-samples', type=int, default=50_000,
-                        help='how many samples the fid is supposed to be calculated on')
-    parser.add_argument('--eval-num-steps', type=int, default=8_192,
-                        help='if sampler uses linspace, this specifies the amount of steps the evaluator module takes when generating samples')
-
+    parser.add_argument('--eval-num-samples', type=int, default=50_000,)
+    parser.add_argument('--eval-num-steps', type=int, default=1_024)
+    parser.add_argument('--eval-sampler', type=str, default='ee', choices=['ee', 'rk2', 'em'], help='em only for diffusion')
 
     # ! distillation arguments
     parser.add_argument('--distill-iterations', type=int, default=50_000,
@@ -128,7 +106,7 @@ if __name__ == "__main__":
     
 
     # of kac
-    # * a = 25, c = 2, g(t)=t as specified by "2025 - Duong et al - Telegraphers Generetive Model via Kac Flows" as the best parameters
+    # * a = 25, c = 2, g(t)=t**2 as specified by "2025 - Duong et al - Telegraphers Generetive Model via Kac Flows" as the best parameters
     # * these are also used by "2025 - Han et al - DistillKac"
     parser.add_argument('--kac-a', type=float, default=25,
                         help='specifies the damping coefficient a of the kac process')
@@ -151,7 +129,6 @@ if __name__ == "__main__":
     # cluster
     parser.add_argument('--data-dir', type=str,
                         help='the local directory of the node the job runs on in the cluster')
-
 
     # ! Dev
     parser.add_argument('--proof-of-concept', action='store_true',
@@ -276,10 +253,6 @@ if __name__ == "__main__":
     if args.which == 'kac':
         from Cluster.utils.sample_kac import TorchKacConstantSampler
         sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
-    
-
-    from Cluster.utils.reversals import Reversal
-    reversal_fns = Reversal(args=args)
 
 
     from Cluster.utils.lossFunctions import LossFns
@@ -296,13 +269,16 @@ if __name__ == "__main__":
         print(f'\nStarting the training')
 
         from Cluster.training import training_wrapper
-        training_wrapper(args=args, loss_fn=loss_fn, reversal_fns=reversal_fns, model=model, data=data, save_path=path_to_model)
+        training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data)
 
 
     # Sample from the model
     if args.what in ['sample']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
+
+        from Cluster.utils.reversals import Reversal
+        reversal_fns = Reversal(args=args, which='sample')
 
         from Cluster.sampling import sample_wrapper
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=save_path)
@@ -313,6 +289,9 @@ if __name__ == "__main__":
     if args.what in ['eval']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nEvaluating the model {path_to_model}')
+
+        from Cluster.utils.reversals import Reversal
+        reversal_fns = Reversal(args=args, which='eval')
 
         from Cluster.eval import eval_wrapper
         eval_wrapper(args=args, data=data, model=model, sampler=sampler, reversal_fns=reversal_fns)
