@@ -69,9 +69,10 @@ if __name__ == "__main__":
 
 
     # ! eval arguments
-    parser.add_argument('--eval-num-samples', type=int, default=50_000,)
-    parser.add_argument('--eval-num-steps', type=int, default=1_024)
     parser.add_argument('--eval-sampler', type=str, default='ee', choices=['ee', 'rk2', 'em'], help='em only for diffusion')
+    parser.add_argument('--eval-num-steps', type=int, default=1_024)
+    parser.add_argument('--eval-num-samples', type=int, default=50_000)
+    parser.add_argument('--eval-model', type=str)
 
     # ! distillation arguments
     parser.add_argument('--distill-iterations', type=int, default=50_000,
@@ -238,11 +239,6 @@ if __name__ == "__main__":
 
     print(f'\n Instantiated the model.')
 
-    if args.model:
-        model.load_state_dict(torch.load(path_to_model, map_location=device))
-        print('\n Loaded the state dict.')
-
-
     # compile the model to fuse and optimize the UNet graph for the GPU
     if args.where == 'cluster':
         model = torch.compile(model)
@@ -288,7 +284,10 @@ if __name__ == "__main__":
     # Evaluate the model using FID
     if args.what in ['eval']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nEvaluating the model {path_to_model}')
+        print(f'\nEvaluating the model {args.eval_model}.')
+
+        model.load_state_dict(torch.load(args.eval_model, map_location=device))
+        print('\n Loaded the state dict.')
 
         from Cluster.utils.reversals import Reversal
         reversal_fns = Reversal(args=args, which='eval')

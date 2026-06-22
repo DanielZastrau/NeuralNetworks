@@ -13,3 +13,6 @@ def assert_dependencies(args: argparse.Namespace):
 
     if args.distill_teacher_sampler == 'em':
         assert args.which == 'diffusion', 'euler maruyama is only allowed for the diffusion model'
+
+    if args.what == 'eval':
+        assert args.eval_model is not None
