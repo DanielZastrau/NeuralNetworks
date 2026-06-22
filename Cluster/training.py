@@ -89,7 +89,8 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
     return avg_test_loss
 
 
-def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider):
+def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn.Module, data: DataProvider,
+                     grid_path: str, model_path: str):
 
     train_dataloader, test_dataloader = data.get_datasets_for_training()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -140,12 +141,12 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
     grid_reversal_fn = Reversal(args=args, which='grid')
 
     # Setup periodic checkpointing wrt loss
-    best_loss: float = float('inf')
+    best_loss: float = 100_000.0
     loss_save_path = ''
 
     # Setup periodic checkpointing wrt fid
     score_reversal_fn = Reversal(args=args, which='fid')
-    best_score: float = float('inf')
+    best_score: float = 100_000.0
     score_save_path = ''
 
     # --- Setup for periodic FID during training ---
@@ -192,15 +193,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
             args.sampling_num_samples = 64
             args.sampling_num_steps = args.training_evaluation_period_grid_num_steps
 
-            grid_save_path = f'samples8x8_{args.which}_{iteration+1}.png'
-            if args.where == 'cluster':
-                if not os.path.exists(f'/work/zastrau/samples/{args.which}'):
-                    os.mkdir(f'/work/zastrau/samples/{args.which}')
-                grid_save_path = f'/work/zastrau/samples/{args.which}/{grid_save_path}'
-            else:    # args.where == 'local':
-                if not os.path.exists(f'./samples/{args.which}'):
-                    os.mkdir(f'./samples/{args.which}')
-                grid_save_path = f'./samples/{args.which}/{grid_save_path}'
+            grid_save_path = os.path.join(grid_path, f'{iteration + 1}.png')
 
             ema_model.eval()
             sample_wrapper(
@@ -228,10 +221,7 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
             if ema_loss < best_loss:
                 best_loss = ema_loss
 
-                # clean up last checkpoint,
-                if loss_save_path:
-                    os.remove(loss_save_path)
-                loss_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_loss{ema_loss:.8f}.pth'
+                loss_save_path = os.path.join(model_path, 'best_loss_model.pth')
 
                 uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
                 torch.save(uncompiled_model.state_dict(), loss_save_path)
@@ -273,13 +263,10 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
             if ema_score < best_score:
                 best_score = ema_score
 
-                # clean up last checkpoint,
-                if score_save_path:
-                    os.remove(score_save_path)
-                score_save_path = f'/work/zastrau/{args.which}_iteration{iteration}_score{ema_score:.2f}.pth'
+                score_save_path = os.path.join(model_path, 'best_score_model.pth')
 
                 uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
                 torch.save(uncompiled_model.state_dict(), score_save_path)
-                print(f"saved best score model to:  {score_save_path},    loss {ema_score}")
+                print(f"saved best score model to:  {score_save_path},    score {ema_score}")
 
     print("Done!")
