@@ -159,6 +159,7 @@ if __name__ == "__main__":
     # Get run Id
     import random
     idx = random.randint(0, 10_000)
+    print(f'ID: {idx}')
     
     # Determine paths
     base = ''
