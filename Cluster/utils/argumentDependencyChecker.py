@@ -16,3 +16,7 @@ def assert_dependencies(args: argparse.Namespace):
 
     if args.what == 'eval':
         assert args.eval_model is not None
+
+    if args.sampling_mode == '8x8':
+        assert args.sampling_num_samples == 64
+

@@ -142,15 +142,8 @@ if __name__ == "__main__":
     from Cluster.utils.argumentDependencyChecker import assert_dependencies
     assert_dependencies(args=args)
 
-    # set some standard values
-    if args.sampling_mode == '8x8':
-        args.sampling_num_samples = 64
-
-    if args.which == 'kac':
-        # * as was done in "2025 - Duong et al - Telegraphers"
-        args.time_truncation = 0
-
-    args.lr = args.lr * (args.training_batch_size / 128)
+    from Cluster.utils.argumentStandards import set_standards
+    args = set_standards(args=args)
 
     print('-'*100)
     print(args)
@@ -163,65 +156,36 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'\nDetermined device:  {device}')
 
-
-    # Set up the model path
-    path_to_model = f"{args.where}_{args.which}_iterations{args.training_iterations}_model.pth"
+    # Get run Id
+    import random
+    idx = random.randint(0, 10_000)
+    
+    # Determine paths
+    base = ''
     if args.where == 'cluster':
-        path_to_model = f"/work/zastrau/{path_to_model}"
-
-    if args.model:    # then a path to a model has to be given through the arguments
-        path_to_model = args.model
-        print('\nA model path has been provided.')
-    print(f'\nDetermined model path:  {path_to_model}.')
-
-
-    # Set up the student model path
-    path_to_distilled_student = f"{args.where}_{args.which}_iterations{args.training_iterations}_model_student.pth"
-    if args.where == 'cluster':
-        path_to_distilled_student = f"/work/zastrau/{path_to_distilled_student}"
-    print(f'\nDetermined student model path:  {path_to_distilled_student}')
-
-
-    # Set up model image path
-    base_name = f"{args.which}_iterations{args.training_iterations}_sampler{args.sampling_sampler}"
-    if args.sampling_sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
-        base_name = f'{base_name}_steps{args.sampling_num_steps}'
+        base = f'/work/zastrau/{idx}'
     else:
-        base_name = f'{base_name}_rk45'
+        base = f'./{idx}'
 
-    # Mode specific path extension
-    if args.sampling_mode == '8x8':
-        base_name = f'{base_name}_8x8.png'
-    else:    # args.sampling_mode == 'set'
-        base_name = f'{base_name}_set'
-        
+    import os
+    # path for periodic grid generation in training
+    grid_path = os.path.join(base, 'grid')
 
-    # Set up student image path
-    student_base_name = f"{args.which}_iterations{args.distill_iterations}_sampler{args.sampling_sampler}"
-    if args.sampling_sampler in ['ee', 'rk2', 'em', 'ab2']:    # then fixed step size
-        student_base_name = f'{student_base_name}_steps{args.sampling_num_steps}'
-    else:
-        student_base_name = f'{student_base_name}_rk45'
+    # path for models
+    model_path = os.path.join(base, 'models')
 
-    # Mode specific path extension
-    if args.sampling_mode == '8x8':
-        student_base_name = f'{student_base_name}_8x8.png'
-    else:    # args.sampling_mode == 'set'
-        student_base_name = f'{student_base_name}_set'
+    # path for the sampling module
+    images_path = os.path.join(base, 'samples')
 
-
-    # Location specific path start
-    save_path = f"./{base_name}"
-    student_save_path = f'./{student_base_name}'
-    if args.where == 'cluster':
-        if args.sampling_mode == '8x8':
-            save_path = f"/work/zastrau/samples/{base_name}"
-            student_save_path = f'/work/zastrau/samples/{student_base_name}'
-        else:    # args.sampling_mode == 'set'
-            save_path = f"/work/zastrau/samples/{base_name}"
-            student_save_path = f'/work/zastrau/samples/{student_base_name}'
-    print(f'\nDetermined teacher image path: {save_path}')
-    print(f'\nDetermined student image path: {student_save_path}')
+    # Assert that the path exists
+    if not os.path.exists(base):
+        os.mkdir(base)
+    if not os.path.exists(grid_path):
+        os.mkdir(grid_path)
+    if not os.path.exists(model_path):
+        os.mkdir(model_path)
+    if not os.path.exists(images_path):
+        os.mkdir(images_path)
 
 
     from Cluster.utils.dataHandling import DataProvider
@@ -237,7 +201,8 @@ if __name__ == "__main__":
         from Cluster.networks.neuralNetworkSmall import ConditionalUNet
         model = ConditionalUNet(in_channels=data.data_dims.channels, out_channels=data.data_dims.channels).to(device)
 
-    print(f'\n Instantiated the model.')
+    print(f'\nInstantiated the model.')
+
 
     # compile the model to fuse and optimize the UNet graph for the GPU
     if args.where == 'cluster':
@@ -265,7 +230,7 @@ if __name__ == "__main__":
         print(f'\nStarting the training')
 
         from Cluster.training import training_wrapper
-        training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data)
+        training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, grid_path=grid_path, model_path=model_path)
 
 
     # Sample from the model
@@ -277,9 +242,9 @@ if __name__ == "__main__":
         reversal_fns = Reversal(args=args, which='sample')
 
         from Cluster.sampling import sample_wrapper
-        sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=save_path)
+        sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=images_path)
 
-        print(f'\nFinished the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples. And saved to {save_path}.')
+        print(f'\nFinished the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples. And saved to {images_path}.')
 
     # Evaluate the model using FID
     if args.what in ['eval']:
@@ -306,15 +271,15 @@ if __name__ == "__main__":
 
         print(f'\nFinished evaluation.')
 
-    if args.what in ['distill']:
-        print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student.')
+    # if args.what in ['distill']:
+    #     print('----------------------------------------------------------------------------------------------------')
+    #     print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student.')
 
-        # TODO Need to also implement distillation for all other processes, Schrödinger
-        from Cluster.distillation import distillation_wrapper
-        student_model = distillation_wrapper(
-            args=args, save_path=path_to_distilled_student, model_path=path_to_model,
-            reversal_fns=reversal_fns, noisify_fns=noisify_fns
-        )
+    #     # TODO Need to also implement distillation for all other processes, Schrödinger
+    #     from Cluster.distillation import distillation_wrapper
+    #     student_model = distillation_wrapper(
+    #         args=args, save_path=path_to_distilled_student, model_path=path_to_model,
+    #         reversal_fns=reversal_fns, noisify_fns=noisify_fns
+    #     )
 
-        print(f'\nFinished Distillation.')
+    #     print(f'\nFinished Distillation.')
