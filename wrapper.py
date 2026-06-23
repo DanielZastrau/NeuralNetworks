@@ -205,11 +205,6 @@ if __name__ == "__main__":
     print(f'\nInstantiated the model.')
 
 
-    # compile the model to fuse and optimize the UNet graph for the GPU
-    if args.where == 'cluster':
-        model = torch.compile(model)
-
-
     # Set up sampler if needed
     sampler = None
     if args.which == 'kac':
@@ -229,6 +224,10 @@ if __name__ == "__main__":
     if args.what in ['train']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the training')
+
+        # compile the model to fuse and optimize the UNet graph for the GPU
+        if args.where == 'cluster':
+            model = torch.compile(model)
 
         from Cluster.training import training_wrapper
         training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, grid_path=grid_path, model_path=model_path)
@@ -262,6 +261,10 @@ if __name__ == "__main__":
         else:    # ! for wrongly saved older checkpoints
             model = checkpoint
             print('\nLoaded the full model object directly.')
+
+        # compile the model to fuse and optimize the UNet graph for the GPU
+        if args.where == 'cluster':
+            model = torch.compile(model)
 
         from Cluster.utils.reversals import Reversal
         reversal_fns = Reversal(args=args, which='eval')
