@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
         # Load the checkpoint file
         import os
-        path = os.path.join('work', 'zastrau', str(args.eval_model_folder_id), 'models', 'best_score_model.pth')
+        path = f'/work/zastrau/{args.eval_model_folder_id}/models/best_score_model.pth'
         checkpoint = torch.load(path, map_location=device)
         print(f'Model path:  {path}.')
 
