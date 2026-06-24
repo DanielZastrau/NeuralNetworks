@@ -72,7 +72,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval-sampler', type=str, default='ee', choices=['ee', 'rk2', 'em'], help='em only for diffusion')
     parser.add_argument('--eval-num-steps', type=int, default=1_024)
     parser.add_argument('--eval-num-samples', type=int, default=50_000)
-    parser.add_argument('--eval-model', type=str)
+    parser.add_argument('--eval-model-folder-id', type=int)
 
     # ! distillation arguments
     parser.add_argument('--distill-iterations', type=int, default=50_000,
@@ -156,37 +156,42 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f'\nDetermined device:  {device}')
 
-    # Get run Id
-    import random
-    idx = random.randint(0, 10_000)
-    print(f'ID: {idx}')
-    
-    # Determine paths
-    base = ''
-    if args.where == 'cluster':
-        base = f'/work/zastrau/{idx}'
-    else:
-        base = f'./{idx}'
 
-    import os
-    # path for periodic grid generation in training
-    grid_path = os.path.join(base, 'grid')
+    # ! if args.what == sample, then previously a model had to be trained and thus the corresponding folders already exist
+    # ! if args.what == distill, then the same
+    # ! if args.what == eval, then no folders are needed
+    if args.what in ['train']:
+        # Get run Id
+        import random
+        idx = random.randint(0, 10_000)
+        print(f'ID: {idx}')
+        
+        # Determine paths
+        base = ''
+        if args.where == 'cluster':
+            base = f'/work/zastrau/{idx}'
+        else:
+            base = f'./{idx}'
+            
+        import os
+        # path for periodic grid generation in training
+        grid_path = os.path.join(base, 'grid')
 
-    # path for models
-    model_path = os.path.join(base, 'models')
+        # path for models
+        model_path = os.path.join(base, 'models')
 
-    # path for the sampling module
-    images_path = os.path.join(base, 'samples')
+        # path for the sampling module
+        images_path = os.path.join(base, 'samples')
 
-    # Assert that the path exists
-    if not os.path.exists(base):
-        os.mkdir(base)
-    if not os.path.exists(grid_path):
-        os.mkdir(grid_path)
-    if not os.path.exists(model_path):
-        os.mkdir(model_path)
-    if not os.path.exists(images_path):
-        os.mkdir(images_path)
+        # Ensure that the path exists
+        if not os.path.exists(base):
+            os.mkdir(base)
+        if not os.path.exists(grid_path):
+            os.mkdir(grid_path)
+        if not os.path.exists(model_path):
+            os.mkdir(model_path)
+        if not os.path.exists(images_path):
+            os.mkdir(images_path)
 
 
     from Cluster.utils.dataHandling import DataProvider
@@ -252,7 +257,9 @@ if __name__ == "__main__":
         print(f'\nEvaluating the model {args.eval_model}.')
 
         # Load the checkpoint file
-        checkpoint = torch.load(args.eval_model, map_location=device)
+        import os
+        path = os.path.join('work', 'zastrau', args.eval_model_folder_id, 'models', 'best_score_model.pth')
+        checkpoint = torch.load(path, map_location=device)
 
         # Check if it's a state_dict (a dictionary) or the full model object
         if isinstance(checkpoint, dict):
