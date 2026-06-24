@@ -254,7 +254,7 @@ if __name__ == "__main__":
     # Evaluate the model using FID
     if args.what in ['eval']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nEvaluating the model {args.eval_model}.')
+        print(f'\nEvaluating the model from the folder  {args.eval_model_folder_id}.')
 
         # Load the checkpoint file
         import os
