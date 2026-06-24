@@ -15,7 +15,7 @@ def assert_dependencies(args: argparse.Namespace):
         assert args.which == 'diffusion', 'euler maruyama is only allowed for the diffusion model'
 
     if args.what == 'eval':
-        assert args.eval_model is not None
+        assert args.eval_model_folder_id is not None
 
     if args.sampling_mode == '8x8':
         assert args.sampling_num_samples == 64
