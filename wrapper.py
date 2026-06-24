@@ -260,6 +260,7 @@ if __name__ == "__main__":
         import os
         path = os.path.join('work', 'zastrau', args.eval_model_folder_id, 'models', 'best_score_model.pth')
         checkpoint = torch.load(path, map_location=device)
+        print(f'Model path:  {path}.')
 
         # Check if it's a state_dict (a dictionary) or the full model object
         if isinstance(checkpoint, dict):
