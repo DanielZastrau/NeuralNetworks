@@ -3,6 +3,7 @@ import argparse
 import torch
 import torch.nn as nn
 from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
@@ -24,6 +25,12 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
         lr=args.distill_lr,
         weight_decay=args.distill_weight_decay
     )
+    
+    scheduler = CosineAnnealingLR(
+            optimizer,
+            T_max=args.distill_iterations,
+            eta_min=1e-6
+        )
     
     target_decay = 0.9999
     ema_model = AveragedModel(student, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
@@ -82,6 +89,7 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
         loss.backward()
         torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=1.0)
         optimizer.step()
+        scheduler.step()
         ema_model.update_parameters(student)
 
     uncompiled_model = getattr(student, "_orig_mod", student)
