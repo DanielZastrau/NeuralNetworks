@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser.add_argument('--distill-num-teacher-substeps', type=int, default=16, help='The amount of teacher substeps the student is supposed to learn')
     parser.add_argument('--distill-lr', type=float, default=2e-4)
     parser.add_argument('--distill-model-folder-id', type=int)
-    parser.add_argument('--distill-model-name' type=str)
+    parser.add_argument('--distill-model-name', type=str)
 
 
     # ! general arguments
