@@ -34,9 +34,9 @@ if __name__ == "__main__":
 
     parser.add_argument('--training-optimizer', type=str, default="adam", choices=['adam', 'adamW'])
     parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01, help='only used for adamW')
+    parser.add_argument('--training-optimizer-lr', type=float, default=2e-4)
 
     parser.add_argument('--training-scheduler', type=str, default='cosine', choices=['cosine', 'constant'])
-    parser.add_argument('--training-scheduler-lr', type=float, default=2e-4)
 
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'])
 
