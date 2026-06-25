@@ -76,7 +76,8 @@ if __name__ == "__main__":
     parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'])
     parser.add_argument('--distill-num-student-steps', type=int, default=512, help='The amount of steps the student should take in total.')
     parser.add_argument('--distill-num-teacher-substeps', type=int, default=16, help='The amount of teacher substeps the student is supposed to learn')
-    parser.add_argument('--distill-lr', type=float, default=2e-4)
+    parser.add_argument('--distill-lr', type=float, default=1e-4)
+    parser.add_argument('--distill-weight-decay', type=float, default=0.01)
     parser.add_argument('--distill-model-folder-id', type=int)
     parser.add_argument('--distill-model-name', type=str)
 
@@ -105,7 +106,7 @@ if __name__ == "__main__":
                         help='specifies the wave front speed c of the kac process')
     parser.add_argument('--kac-f', type=str, default='opt1', choices=['opt1'],
                         help='lets you choose different data schedules, opt1 is "1-t"')
-    parser.add_argument('--kac-g', type=str, default='opt2', choices=['opt1', 'opt2'],
+    parser.add_argument('--kac-g', type=str, default='opt1', choices=['opt1', 'opt2'],
                         help='lets you choose different noise schedules, opt1 is "t",  opt2 is "t^2"')
 
 
@@ -200,25 +201,20 @@ if __name__ == "__main__":
     print(f'\nInstantiated the model.')
 
 
-    # Set up sampler if needed
-    sampler = None
-    if args.which == 'kac':
-        from Cluster.utils.sample_kac import TorchKacConstantSampler
-        sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
-
-
-    from Cluster.utils.lossFunctions import LossFns
-    loss_fn = LossFns(args=args, sampler=sampler, data=data)
-
-
-    from Cluster.utils.noisifier import Noisify
-    noisify_fns = Noisify(args=args)
-
 
     # Train the model
     if args.what in ['train']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the training')
+
+        # Set up sampler if needed
+        sampler = None
+        if args.which == 'kac':
+            from Cluster.utils.sample_kac import TorchKacConstantSampler
+            sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
+
+        from Cluster.utils.lossFunctions import LossFns
+        loss_fn = LossFns(args=args, sampler=sampler, data=data)
 
         # compile the model to fuse and optimize the UNet graph for the GPU
         if args.where == 'cluster':
@@ -228,10 +224,17 @@ if __name__ == "__main__":
         training_wrapper(args=args, loss_fn=loss_fn, model=model, data=data, grid_path=grid_path, model_path=model_path)
 
 
+
     # Sample from the model
     if args.what in ['sample']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nStarting the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples.')
+
+        # Set up sampler if needed
+        sampler = None
+        if args.which == 'kac':
+            from Cluster.utils.sample_kac import TorchKacConstantSampler
+            sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
 
         from Cluster.utils.reversals import Reversal
         reversal_fns = Reversal(args=args, which='sample')
@@ -240,6 +243,7 @@ if __name__ == "__main__":
         sample_wrapper(args=args, model=model, data=data, sampler=sampler, reversal_fns=reversal_fns, save_path=images_path)
 
         print(f'\nFinished the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples. And saved to {images_path}.')
+
 
     # Evaluate the model using FID
     if args.what in ['eval']:
@@ -273,6 +277,7 @@ if __name__ == "__main__":
 
         print(f'\nFinished evaluation.')
 
+
     if args.what in ['distill']:
         print('----------------------------------------------------------------------------------------------------')
         print(f'\nDistilling {args.distill_model_name} from folder {args.distill_model_folder_id} into a {args.distill_num_student_steps} step student.')
@@ -291,18 +296,18 @@ if __name__ == "__main__":
             model = checkpoint
             print('\nLoaded the full model object directly.')
 
+        import copy
+        teacher = model
+        student = copy.deepcopy(teacher)
+
         # compile the model to fuse and optimize the UNet graph for the GPU
         if args.where == 'cluster':
             teacher = torch.compile(model)
+            student = torch.compile(student)
 
-        from Cluster.utils.reversals import Reversal
-        reversal_fns = Reversal(args=args, which='distill')
 
         # TODO Need to also implement distillation for all other processes, Schrödinger
         from Cluster.distillation import distillation_wrapper
-        student_model = distillation_wrapper(
-            args=args, teacher=model, model_path=path_to_model,
-            reversal_fns=reversal_fns, noisify_fns=noisify_fns
-        )
+        student_model = distillation_wrapper(args=args, teacher=teacher, student=student, path=f'/work/zastrau/{args.distill_model_folder_id}/models/')
 
         print(f'\nFinished Distillation.')
