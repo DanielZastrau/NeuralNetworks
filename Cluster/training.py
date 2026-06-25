@@ -101,9 +101,9 @@ def training_wrapper(args: argparse.Namespace, loss_fn: LossFns, model: torch.nn
 
     # Initialize optimizer with the TARGET scaled learning rate
     if args.training_optimizer == 'adamW':
-        optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.training_optimizer_weight_decay)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=args.training_optimizer_lr, weight_decay=args.training_optimizer_weight_decay)
     elif args.training_optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+        optimizer = torch.optim.Adam(model.parameters(), lr=args.training_optimizer_lr)
 
     if args.training_scheduler == 'cosine': 
         print(f'Using warmup and cosine annealing learning rate scheduler.')
