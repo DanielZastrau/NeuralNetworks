@@ -2,6 +2,7 @@ import argparse
 
 import torch
 import torch.nn as nn
+from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
@@ -25,12 +26,16 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
         weight_decay=args.distill_weight_decay
     )
     
+    target_decay = 0.9999
+    ema_model = AveragedModel(model, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
+
     linspace_of_endpoints = torch.linspace(1, args.time_truncation, args.distill_num_student_steps + 1, dtype=torch.float32, device=device)
     delta_t = (1 - args.time_truncation) / args.distill_num_student_steps
 
     distill_iter = iter(train_dataloader)
     teacher.eval()
     student.train()
+    ema_model.train()
     for iteration in range(args.distill_iterations):
         optimizer.zero_grad()
 
@@ -78,9 +83,14 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
         loss.backward()
         torch.nn.utils.clip_grad_norm_(student.parameters(), max_norm=1.0)
         optimizer.step()
+        ema_model.update_parameters(student)
 
-    uncompiled_model = getattr(student.module, "_orig_mod", student.module)
+    uncompiled_model = getattr(student, "_orig_mod", student)
     torch.save(uncompiled_model.state_dict(), f'{path}student_{args.distill_num_student_steps}.pth')
     print(f"saved best loss model to:  {f'{path}student_{args.distill_num_student_steps}.pth'}")
+
+    uncompiled_model = getattr(ema_model.module, "_orig_mod", ema_model.module)
+    torch.save(uncompiled_model.state_dict(), f'{path}student_{args.distill_num_student_steps}_ema.pth')
+    print(f"saved best loss model to:  {f'{path}student_{args.distill_num_student_steps}_ema.pth'}")
 
     return student
