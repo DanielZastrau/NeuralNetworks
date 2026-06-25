@@ -273,6 +273,12 @@ if __name__ == "__main__":
         from Cluster.utils.reversals import Reversal
         reversal_fns = Reversal(args=args, which='eval')
 
+        # Set up sampler if needed
+        sampler = None
+        if args.which == 'kac':
+            from Cluster.utils.sample_kac import TorchKacConstantSampler
+            sampler = TorchKacConstantSampler(a=args.kac_a, c=args.kac_c, T=args.T, M=50000, K=4096)
+
         from Cluster.eval import eval_wrapper
         eval_wrapper(args=args, data=data, model=model, sampler=sampler, reversal_fns=reversal_fns)
 
