@@ -69,6 +69,7 @@ if __name__ == "__main__":
     parser.add_argument('--eval-num-steps', type=int, default=1_024)
     parser.add_argument('--eval-num-samples', type=int, default=50_000)
     parser.add_argument('--eval-model-folder-id', type=int)
+    parser.add_argument('--eval-model-name', type=str)
 
     # ! distillation arguments
     parser.add_argument('--distill-iterations', type=int, default=50_000)
@@ -245,14 +246,15 @@ if __name__ == "__main__":
         print(f'\nFinished the sampling for {args.which} with {args.sampling_sampler}, sampling {args.sampling_num_samples} samples. And saved to {images_path}.')
 
 
+
     # Evaluate the model using FID
     if args.what in ['eval']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nEvaluating the model from the folder  {args.eval_model_folder_id}.')
+        print(f'\nEvaluating the {args.eval_model_name} from the folder  {args.eval_model_folder_id}.')
 
         # Load the checkpoint file
         import os
-        path = f'/work/zastrau/{args.eval_model_folder_id}/models/best_score_model.pth'
+        path = f'/work/zastrau/{args.eval_model_folder_id}/models/{args.eval_model_name}.pth'
         checkpoint = torch.load(path, map_location=device)
         print(f'Model path:  {path}.')
 
