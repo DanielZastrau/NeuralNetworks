@@ -280,7 +280,8 @@ if __name__ == "__main__":
 
     if args.what in ['distill']:
         print('----------------------------------------------------------------------------------------------------')
-        print(f'\nDistilling {args.distill_model_name} from folder {args.distill_model_folder_id} into a {args.distill_num_student_steps} step student.')
+        print(f'\nDistilling {args.distill_model_name} from folder {args.distill_model_folder_id} into a {args.distill_num_student_steps} step student\
+                with {args.distill_num_teacher_substeps} teacher substeps.')
 
         # Load the checkpoint file
         import os

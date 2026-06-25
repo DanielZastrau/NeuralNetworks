@@ -8,8 +8,7 @@ from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.noisifier import Noisify
 from Cluster.utils.reversals import Reversal
 
-def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, student: torch.nn.Module, path: str) -> torch.nn.Module:
-    """Wraps together the functions and boilerplate"""    
+def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, student: torch.nn.Module, path: str) -> torch.nn.Module:  
 
     # Determine device and set up model and loss function accordingly
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
