@@ -17,3 +17,6 @@ def assert_dependencies(args: argparse.Namespace):
     if args.sampling_mode == '8x8':
         assert args.sampling_num_samples == 64
 
+    if args.what == 'distill':
+        assert args.distill_num_student_steps is not None
+        assert args.distill_num_teacher_substeps is not None
