@@ -46,8 +46,8 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
         # Properly scale continuous time from T down to epsilon
         # ! Diffusion and MMD sample until 1e-5 due to their singularity,
         # ! Kac samples until 0
-        time_steps = torch.linspace(args.T, args.time_truncation, args.sampling_num_steps, device=device)
-        dt = (args.T - args.time_truncation) / (args.sampling_num_steps - 1)
+        dt = (args.T - args.time_truncation) / args.sampling_num_steps
+        time_steps = torch.linspace(args.T, args.time_truncation + dt, args.sampling_num_steps, device=device)
 
         for step_idx, t_val in enumerate(time_steps):
             if (step_idx + 1) % args.sampling_logging_period == 0:
