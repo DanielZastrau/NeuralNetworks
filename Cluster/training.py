@@ -9,7 +9,6 @@ from torch.optim.swa_utils import AveragedModel, get_ema_multi_avg_fn
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.lossFunctions import LossFns
-from Cluster.utils.stages import Stages
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.reversals import Reversal
 from Cluster.sampling import sample, sample_wrapper
