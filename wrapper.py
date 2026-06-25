@@ -8,20 +8,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
     # ! general setup
-    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], default='diffusion',
-                        help='which model do you want to run')
-    parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local',
-                        help='where do you want to run the model, locally or on some hpc cluster. Cluster is also possible if you have local cuda support.\
-                            Youll have to adjust the paths though.')
-    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'distill'], default='train',
-                        help='lets you adjust what exactly you want to run if you only need a certain segment')
+    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], required=True)
+    parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local', help='Currently only works for very specific paths.')
+    parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'distill'], required=True)
     
 
     # ! training arguments
     # * We adopt the training protocoll of "2025 - Duong et al - Telegraphers" which just trains for 400k iterations
     # * batch sizes of 128 seem to be the standard, see: "2025 - Duong et al - Telegraphers", "2025 - Han et al DistillKac"
-    parser.add_argument('--training-iterations', type=int, default=400_000,
-                        help='specifies the amount of epochs in training')
+    parser.add_argument('--training-iterations', type=int, default=400_000)
     parser.add_argument('--training-logging-period', type=int, default=1_000,
                         help='lets you set the regular interval where the process sends you a lifesign')
     parser.add_argument('--training-batch-size', type=int, default=128)
@@ -41,6 +36,7 @@ if __name__ == "__main__":
     parser.add_argument('--training-optimizer-weight-decay', type=float, default=0.01, help='only used for adamW')
 
     parser.add_argument('--training-scheduler', type=str, default='cosine', choices=['cosine', 'constant'])
+    parser.add_argument('--training-scheduler-lr', type=float, default=2e-4)
 
     parser.add_argument('--training-verbosity', default='normal', choices=['silent', 'normal', 'verbose'])
 
@@ -75,18 +71,14 @@ if __name__ == "__main__":
     parser.add_argument('--eval-model-folder-id', type=int)
 
     # ! distillation arguments
-    parser.add_argument('--distill-iterations', type=int, default=50_000,
-                        help='sets the amount of iterations the student model should be trained for')
-    parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'],
-                        help='provides the possibility to set a different teacher sampler than previously defined, if not sets defaults to ee')
-    parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'],
-                        help='provides the possibility to set a different student sampler than ee, if not set defaults to explicit euler')
-    parser.add_argument('--distill-num-student-steps', type=int, default=512,
-                        help='specifies the amount of steps the student should do in order to sample, i.e. a 20-step student or a 10-step student.')
-    parser.add_argument('--distill-num-teacher-substeps', type=int, default=16,
-                        help='the amount of teacher steps the student is supposed to learn')
-    parser.add_argument('--distill-lr', type=float, default=2e-4,
-                        help='lets you set the learning rate for the distillation algorithm')
+    parser.add_argument('--distill-iterations', type=int, default=50_000)
+    parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'])
+    parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'])
+    parser.add_argument('--distill-num-student-steps', type=int, default=512, help='The amount of steps the student should take in total.')
+    parser.add_argument('--distill-num-teacher-substeps', type=int, default=16, help='The amount of teacher substeps the student is supposed to learn')
+    parser.add_argument('--distill-lr', type=float, default=2e-4)
+    parser.add_argument('--distill-model-folder-id', type=int)
+    parser.add_argument('--distill-model-name' type=str)
 
 
     # ! general arguments
@@ -95,8 +87,6 @@ if __name__ == "__main__":
 
 
     # ! configuration arguments
-    parser.add_argument('--lr', type=float, default=2e-4,
-                        help='specifies the learning rate of the training process')
     parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
                         help='which dataset you want to train on options include [cifar10]')
     parser.add_argument('--T', type=float, default=1.0,
@@ -283,15 +273,36 @@ if __name__ == "__main__":
 
         print(f'\nFinished evaluation.')
 
-    # if args.what in ['distill']:
-    #     print('----------------------------------------------------------------------------------------------------')
-    #     print(f'\nDistilling the teacher model {path_to_model} into a {args.distill_num_student_steps} step student.')
+    if args.what in ['distill']:
+        print('----------------------------------------------------------------------------------------------------')
+        print(f'\nDistilling {args.distill_model_name} from folder {args.distill_model_folder_id} into a {args.distill_num_student_steps} step student.')
 
-    #     # TODO Need to also implement distillation for all other processes, Schrödinger
-    #     from Cluster.distillation import distillation_wrapper
-    #     student_model = distillation_wrapper(
-    #         args=args, save_path=path_to_distilled_student, model_path=path_to_model,
-    #         reversal_fns=reversal_fns, noisify_fns=noisify_fns
-    #     )
+        # Load the checkpoint file
+        import os
+        path = f'/work/zastrau/{args.distill_model_folder_id}/models/{args.distill_model_name}.pth'
+        checkpoint = torch.load(path, map_location=device)
+        print(f'Model path:  {path}.')
 
-    #     print(f'\nFinished Distillation.')
+        # Check if it's a state_dict (a dictionary) or the full model object
+        if isinstance(checkpoint, dict):
+            model.load_state_dict(checkpoint)
+            print('\nLoaded the state dict.')
+        else:    # ! for wrongly saved older checkpoints
+            model = checkpoint
+            print('\nLoaded the full model object directly.')
+
+        # compile the model to fuse and optimize the UNet graph for the GPU
+        if args.where == 'cluster':
+            teacher = torch.compile(model)
+
+        from Cluster.utils.reversals import Reversal
+        reversal_fns = Reversal(args=args, which='distill')
+
+        # TODO Need to also implement distillation for all other processes, Schrödinger
+        from Cluster.distillation import distillation_wrapper
+        student_model = distillation_wrapper(
+            args=args, teacher=model, model_path=path_to_model,
+            reversal_fns=reversal_fns, noisify_fns=noisify_fns
+        )
+
+        print(f'\nFinished Distillation.')
