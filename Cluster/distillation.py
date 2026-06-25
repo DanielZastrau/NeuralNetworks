@@ -27,7 +27,7 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
     )
     
     target_decay = 0.9999
-    ema_model = AveragedModel(model, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
+    ema_model = AveragedModel(student, device=device, multi_avg_fn=get_ema_multi_avg_fn(decay=target_decay))
 
     linspace_of_endpoints = torch.linspace(1, args.time_truncation, args.distill_num_student_steps + 1, dtype=torch.float32, device=device)
     delta_t = (1 - args.time_truncation) / args.distill_num_student_steps
