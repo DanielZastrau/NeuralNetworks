@@ -38,8 +38,8 @@ def sample(args: argparse.Namespace, model: torch.nn.Module,
             assert isinstance(sampler, TorchKacConstantSampler)
             x_batch = sampler.sample(torch.ones(curr_batch_size, 1, device=device) * args.T, dim=data.data_dims.total_dimension).to(device)
             x_batch = x_batch.view(curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height)
-
-        else:    # args.which == 'diffusion':
+            
+        elif args.which == 'diffusion' or args.which == 'schrödinger':
             x_batch = torch.randn((curr_batch_size, data.data_dims.channels, data.data_dims.width, data.data_dims.height), device=device)
 
 

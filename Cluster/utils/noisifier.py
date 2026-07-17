@@ -28,6 +28,10 @@ class Noisify():
         b_t = Diffusion.b(t).view(-1, 1, 1, 1)
         return torch.sqrt(1 - b_t**2) * torch.randn_like(x0) + b_t * x0
     
+    def schrödinger(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
+        # * closed form solution derived by myself in may masters thesis
+
+        return (1 - t) * x0 + torch.sqrt(t) * torch.rand_like(x0)
 
     def kac(self, x0: torch.Tensor, t: torch.Tensor) -> torch.Tensor:
         # * Mean-Reverting Forward Process see 'Duong Chemseddine 2025 - Telegraphers Generative Model via Damped Wave Equations'

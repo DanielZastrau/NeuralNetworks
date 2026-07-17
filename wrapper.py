@@ -8,7 +8,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train Model on CIFAR10")
     
     # ! general setup
-    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'föllmer'], required=True)
+    parser.add_argument('--which', type=str, choices=['diffusion', 'kac', 'mmd', 'schrödinger'], required=True)
     parser.add_argument('--where', type=str, choices=['local', 'cluster'], default='local', help='Currently only works for very specific paths.')
     parser.add_argument('--what', type=str, choices=['train', 'sample', 'eval', 'distill'], required=True)
     
@@ -72,12 +72,12 @@ if __name__ == "__main__":
     parser.add_argument('--eval-model-name', type=str)
 
     # ! distillation arguments
-    parser.add_argument('--distill-iterations', type=int, default=50_000)
+    parser.add_argument('--distill-iterations', type=int, default=400_000)
     parser.add_argument('--distill-teacher-sampler', type=str, default='ee', choices=['ee', 'rk2', 'ab2', 'rk45', 'em'])
     parser.add_argument('--distill-student-sampler', type=str, default='ee', choices=['ee'])
     parser.add_argument('--distill-num-student-steps', type=int, help='The amount of steps the student should take in total.')
     parser.add_argument('--distill-num-teacher-substeps', type=int, help='The amount of teacher substeps the student is supposed to learn')
-    parser.add_argument('--distill-lr', type=float, default=1e-4)
+    parser.add_argument('--distill-lr', type=float, default=2e-4)
     parser.add_argument('--distill-weight-decay', type=float, default=0.01)
     parser.add_argument('--distill-model-folder-id', type=int)
     parser.add_argument('--distill-model-name', type=str)
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     parser.add_argument('--T', type=float, default=1.0,
                         help='specifies the time horizon T')
     # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"
-    parser.add_argument('--time-truncation', type=float, default=1e-5,
+    parser.add_argument('--time-truncation', type=float, default=1e-8,
                         help='lets you set a cutoff time for the model, defaults to 1e-5, used for diffusion training and sampling, mmd sampling')
     
 
@@ -314,8 +314,6 @@ if __name__ == "__main__":
             teacher = torch.compile(model)
             student = torch.compile(student)
 
-
-        # TODO Need to also implement distillation for all other processes, Schrödinger
         from Cluster.distillation import distillation_wrapper
         student_model = distillation_wrapper(args=args, teacher=teacher, student=student, path=f'/work/zastrau/{args.distill_model_folder_id}/models/')
 

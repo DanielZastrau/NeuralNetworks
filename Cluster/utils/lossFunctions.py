@@ -21,26 +21,29 @@ class LossFns():
         elif args.which == 'kac':
             self.loss = self.kac
 
-        else:    # args.which == 'mmd':
+        elif args.which == 'mmd':
             self.loss = self.mmd
+
+        elif args.which == 'schrödinger':
+            self.loss = self.schrödinger
             
 
-    def diffusion(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
+    def diffusion(self, model: torch.nn.Module, xbatch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.diffusion import Diffusion
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        x_0 = mini_batch
+        x0 = xbatch
 
         # sample time steps t uniformly from [eps, 1)
-        t = torch.rand(mini_batch.size(0), device=device)
+        t = torch.rand(xbatch.size(0), device=device)
         t = torch.clamp(t, min=self.args.time_truncation, max=1)
 
-        # draw standard gaussian noise matching the shape of x_0
-        noise = torch.randn_like(x_0)
+        # draw standard gaussian noise matching the shape of x0
+        noise = torch.randn_like(x0)
         b_t = Diffusion.b(t).view(-1, 1, 1, 1)
 
         # compute x
-        x_corrupted = b_t * x_0 + torch.sqrt(1 - b_t**2) * noise
+        x_corrupted = b_t * x0 + torch.sqrt(1 - b_t**2) * noise
 
         # simplyfiy the target
         # target = - noise / torch.sqrt(1 - b_t**2)
@@ -66,7 +69,33 @@ class LossFns():
 
         return loss
     
-    def kac(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
+    def schrödinger(self, model: torch.nn.Module, xbatch: torch.Tensor) -> torch.Tensor:
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        x0 = xbatch
+
+        t = torch.rand(xbatch.size(0), device=device)
+        t = torch.clamp(t, min=self.args.time_truncation, max=1)
+        noise = torch.randn_like(x0)
+
+        x_corrupted = (1 - t) * x0 + torch.sqrt(t) * noise
+
+        # * See my masters thesis
+        # ? this is the eulerian formulation
+        # eulerian_target = 0.5 * ( - x0 - ((x0 - x_corrupted) / t) )
+
+        # ? this is the lagrangian formulation, we prefer that one because it is more stable near 0
+        lagrangian_target = -x0 + 0.5 * torch.sqrt(t)**(-1) * noise
+
+        # ! scale the time up to [0, 1000.0] somce the unet time embedding expects this time scale otherwise
+        # ! the embedding will essentially look the same for all t in the time-interval
+        pred = model(x_corrupted, t * 1000.0)
+
+        loss = torch.nn.functional.mse_loss(pred.float(), lagrangian_target)
+
+        return loss
+    
+    def kac(self, model: torch.nn.Module, xbatch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.velo_utils import compute_velocity
         from Cluster.utils.kac import Kac
 
@@ -74,8 +103,8 @@ class LossFns():
 
         assert isinstance(self.sampler, TorchKacConstantSampler)
 
-        B = mini_batch.size(0)
-        x_0 = mini_batch.view(B, -1).to(device)
+        B = xbatch.size(0)
+        x0 = xbatch.view(B, -1).to(device)
 
         # Sample original time t
         t = torch.rand(B, 1, device=device) * self.args.T
@@ -93,14 +122,14 @@ class LossFns():
         tau: torch.Tensor = self.sampler.sample(g_t, dim=self.data.data_dims.total_dimension).to(device)
 
         # use it to corrupt x0 fully, according to the mean reverting process
-        x_corrupted = f_t * x_0 + tau
+        x_corrupted = f_t * x0 + tau
 
         # compute the target
-        drift = df_t * x_0
+        drift = df_t * x0
 
         with torch.no_grad():
             # Compute velocity using g(t)
-            velo = dg_t * compute_velocity((x_corrupted - f_t * x_0), g_t.unsqueeze(1), a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
+            velo = dg_t * compute_velocity((x_corrupted - f_t * x0), g_t.unsqueeze(1), a=self.args.kac_a, c=self.args.kac_c, epsilon=1e-4, T=self.args.T)
 
         # Model is conditioned on original time t
         pred = model(x_corrupted.view(
@@ -121,10 +150,10 @@ class LossFns():
         return loss
     
 
-    def mmd(self, model: torch.nn.Module, mini_batch: torch.Tensor) -> torch.Tensor:
+    def mmd(self, model: torch.nn.Module, xbatch: torch.Tensor) -> torch.Tensor:
         from Cluster.utils.mmd import MMD
 
-        x0 = mini_batch
+        x0 = xbatch
 
         # sample randomly uniformly from [0, 1]
         t = torch.rand(x0.size(0), device=x0.device) * self.args.T
