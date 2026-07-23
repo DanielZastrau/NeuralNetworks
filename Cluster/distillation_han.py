@@ -57,31 +57,24 @@ def distillation_wrapper(args: argparse.Namespace, teacher: torch.nn.Module, stu
         indices = torch.randint(0, args.distill_num_student_steps, (args.training_batch_size,), device=device)
         t_batch = linspace_of_endpoints[indices]
 
-        # noisify x_batch according to t_batch
-        # TODO still misses Schrödinger
-        x_batch_corrupted = noisify_fns.noisify(x0=x_batch, t=t_batch)
+        x_corrupted = noisify_fns.noisify(x0=x_batch, t=t_batch)
 
-        # integrate backwards in time using the teacher method and N uniform substeps
-        # TODO still misses Schrödinger
-        with torch.no_grad():
-            x_target = reversal_fns.integrator(
-                model=teacher,
-                x_batch=x_batch_corrupted,
-                t_start=t_batch,
-                dt=delta_t,
-                num_substeps=args.distill_num_teacher_substeps,
-            )
-
-        # integrate backwards in time using the student method and 1 substep
-        x_calc = reversal_fns.student_integrate(
-            model=student,
-            x_batch=x_batch_corrupted,
-            t_batch=t_batch,
-            dt=delta_t
+        x_teacher = reversal_fns.integrator(
+            model=teacher,
+            x_batch=x_corrupted,
+            t_start=t_batch,
+            dt=delta_t,
+            num_substeps=args.distill_num_teacher_substeps,
         )
 
-        # compute the loss and update the weights
-        loss = nn.functional.mse_loss(x_target, x_calc)
+        x_student = reversal_fns.student_integrate(
+            model=student,
+            x_batch=x_corrupted,
+            t_batch=t_batch,
+            dt=delta_t,
+        )
+
+        loss = torch.nn.functional.mse_loss(x_student, x_teacher) / (delta_t**2)
         if iteration % 1000 == 0:
             print(f'iteration  {iteration}')
         

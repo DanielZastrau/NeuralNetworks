@@ -86,6 +86,7 @@ if __name__ == "__main__":
     # ! general arguments
     parser.add_argument('--model', type=str, default='',
                         help='path to model, relative or absolute, needed if "what" is set to "sample" or "eval" or "distill", optional for "what" = "train"')
+    parser.add_argument('--model-parameter', type=str, default='duong', choices=['duong', 'han'])
 
 
     # ! configuration arguments
@@ -314,7 +315,7 @@ if __name__ == "__main__":
             teacher = torch.compile(model)
             student = torch.compile(student)
 
-        from Cluster.distillation import distillation_wrapper
+        from Cluster.distillation_salimans import distillation_wrapper
         student_model = distillation_wrapper(args=args, teacher=teacher, student=student, path=f'/work/zastrau/{args.distill_model_folder_id}/models/')
 
         print(f'\nFinished Distillation.')
