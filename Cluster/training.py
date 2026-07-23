@@ -32,7 +32,7 @@ def train(args: argparse.Namespace, x_batch: torch.Tensor,
     x_batch = x_batch.to(device)
     optimizer.zero_grad()
 
-    loss = loss_fn.loss(model=model, mini_batch=x_batch)
+    loss = loss_fn.loss(model=model, xbatch=x_batch)
     if args.training_verbosity == 'verbose':
         print(f'Loss  {loss.item()}')
 
@@ -76,7 +76,7 @@ def test(args: argparse.Namespace, dataloader, model: torch.nn.Module, loss_fn: 
         for X, _ in dataloader:
             X = X.to(device)
 
-            loss += loss_fn.loss(model=model, mini_batch=X).detach()
+            loss += loss_fn.loss(model=model, xbatch=X).detach()
             if args.training_verbosity == 'verbose':
                 print(f'loss  {loss.item()}')
 
