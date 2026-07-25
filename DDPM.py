@@ -6,14 +6,9 @@ import torchvision
 import torch_fidelity
 import matplotlib.pyplot as plt
 
-try: 
-    from Cluster.utils.dataHandling import DataProvider
-    from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
-    from Cluster.networks.neuralNetworkOpenAI import UNetModel
-except ModuleNotFoundError:
-    from utils.dataHandling import DataProvider
-    from utils.uint8_utils import Uint8Dataset, to_uint8_rgb
-    from networks.neuralNetworkOpenAI import UNetModel
+from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
 
