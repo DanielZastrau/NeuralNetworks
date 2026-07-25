@@ -241,6 +241,6 @@ class Diffusion():
 
         print(f"Tested the ema model. FID Score (50_000 samples): {ema_score:.4f}")
 
-DDPM = Diffusion()
-DDPM.train()
-
+if __name__ == '__main__':
+    DDPM = Diffusion()
+    DDPM.train()
