@@ -58,11 +58,11 @@ class Diffusion():
         return UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, attention_resolutions=(2,),
-                         dropout=0.1,)
+                         dropout=0.1,).to(self.device)
 
     def get_ema(self, model:torch.nn.Module):
 
-        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999))
+        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999)).to(self.device)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
