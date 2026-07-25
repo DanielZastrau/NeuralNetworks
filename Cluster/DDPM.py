@@ -176,7 +176,7 @@ class Diffusion():
             if (iteration + 1) % 10_000 == 0:
                 ema.eval()
     
-                samples = self.sample(model=ema, 64)    # are [-1, 1]
+                samples = self.sample(model=ema, amount=64)    # are [-1, 1]
                 samples = (samples + 1.0) * 0.5    # now [0, 1]
                 samples = samples.clamp(0.0, 1.0)    # for good measure
 
