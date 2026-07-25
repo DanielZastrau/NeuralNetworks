@@ -9,9 +9,11 @@ import matplotlib.pyplot as plt
 try: 
     from Cluster.utils.dataHandling import DataProvider
     from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+    from Cluster.networks.neuralNetworkOpenAI import UNetModel
 except ModuleNotFoundError:
     from utils.dataHandling import DataProvider
     from utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+    from networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
 
@@ -56,7 +58,6 @@ class Diffusion():
         return torch.optim.Adam(model.parameters(), lr=2e-4)
 
     def get_model(self):
-        from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
         #! the network natively implements group normalization
         return UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
