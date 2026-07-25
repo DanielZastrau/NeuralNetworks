@@ -6,8 +6,12 @@ import torchvision
 import torch_fidelity
 import matplotlib.pyplot as plt
 
-from Cluster.utils.dataHandling import DataProvider
-from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+try: 
+    from Cluster.utils.dataHandling import DataProvider
+    from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+except ModuleNotFoundError:
+    from utils.dataHandling import DataProvider
+    from utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
 class Diffusion():
 
