@@ -32,10 +32,10 @@ class Diffusion():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.base = '/work/zastrau/SongConot/DDPM'
+        self.base = '/work/zastrau/SongCont/DDPM'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
-            
+
         self.grid_path = os.path.join(self.base, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
