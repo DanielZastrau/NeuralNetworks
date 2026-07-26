@@ -16,7 +16,7 @@ class Diffusion():
         self.T = 1000
         self.betas = torch.linspace(0.0001, 0.02, self.T)
         self.alphas = 1 - self.betas
-        self.alphas_bar = torch.cumprod(self.alphas, dim=0)
+        self.alphas_bar = torch.cumprod(self.alphas, dim=0).to(self.device)
         self.sigmas = self.get_sigmas(choice = sigma_choice)
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -69,7 +69,7 @@ class Diffusion():
         t = torch.randint(0, self.T, (x0.shape[0],), device=self.device)
         z = torch.randn_like(x0)
 
-        alpha_bar_t = self.alphas_bar.to(self.device)[t]
+        alpha_bar_t = self.alphas_bar[t]
         alpha_bar_t = alpha_bar_t.view(-1, *([1] * (x0.dim() - 1)))
 
         xt = torch.sqrt(alpha_bar_t) * x0 + torch.sqrt(1 - alpha_bar_t) * z
