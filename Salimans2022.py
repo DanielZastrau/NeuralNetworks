@@ -11,72 +11,71 @@ from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
+    """Implements the base model as described in 2022 - Salimans Ho - Progressive Distillation
+    The prediction target is x"""
 
-    def __init__(self, sigma_choice: str = 'simple'):
-        self.T = 1000
-        self.betas = torch.linspace(0.0001, 0.02, self.T)
-        self.alphas = 1 - self.betas
-        self.alphas_bar = torch.cumprod(self.alphas, dim=0)
-        self.sigmas = self.get_sigmas(choice = sigma_choice)
+    def __init__(self):
+
+        self.T = 1_000
+        t = torch.linspace(0.001, 0.999, self.T)
+
+        self.alphas = torch.cos(0.5 * torch.pi * t)
+        self.sigmas = torch.sqrt(1 - self.alphas**2)
+
+        self.snr = self.alphas**2 / self.sigmas**2
+        ones = torch.ones_like(self.snr)
+        snr_trunc = torch.maximum(self.snr, ones)
+        self.snr_trunc = torch.clamp(snr_trunc, max=1000.0)
 
         self.data = DataProvider(args=argparse.Namespace(
-            training_batch_size = 128, eval_num_samples = 50_000, training_evaluation_period_fid_num_samples = 2_000))
+            training_batch_size = 128, eval_num_samples = 50_000,
+            training_evaluation_period_fid_num_samples = 2_000)
+        )
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        self.base = '/work/zastrau/diffusionHo'
+        self.base = '/work/zastrau/Salimans'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, sigma_choice)
-        if not os.path.exists(self.curr_dir):
-            os.mkdir(self.curr_dir)
-
-        self.grid_path = os.path.join(self.curr_dir, 'grids')
+        self.grid_path = os.path.join(self.base, 'grids')
 
         self.best_score = 10_000.0
 
-    def get_sigmas(self, choice: str = 'simple'):
-
-        if choice == 'simple':
-            return torch.sqrt(self.betas)
-
-        else:    # choice == 'other':
-
-            # Shift alphas_bar by 1 to represent alphas_bar_{t-1}, setting alpha_bar_0 = 1.0
-            alphas_bar_prev = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]])
-
-            return ((1.0 - alphas_bar_prev) / (1.0 - self.alphas_bar)) * self.betas
-
     def get_model(self):
 
-        #! the network natively implements group normalization
         return UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                         model_channels=128, channel_mult=(1, 2, 2, 2),
-                         num_res_blocks=2, attention_resolutions=(2,),
-                         dropout=0.1,).to(self.device)
+                         model_channels=256, channel_mult=(1, 1, 1),
+                         num_res_blocks=3, attention_resolutions=(2, 4),
+                         dropout=0.2).to(self.device)
 
-    def get_ema(self, model:torch.nn.Module):
+    def get_ema(self, model: torch.nn.Module):
 
-        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999)).to(self.device)
+        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999))
 
     def get_optim(self, model: torch.nn.Module):
 
-        return torch.optim.Adam(model.parameters(), lr=2e-4)
+        return torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.001)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
         t = torch.randint(0, self.T, (x0.shape[0],), device=self.device)
         z = torch.randn_like(x0)
 
-        alpha_bar_t = self.alphas_bar.to(self.device)[t]
-        alpha_bar_t = alpha_bar_t.view(-1, *([1] * (x0.dim() - 1)))
+        alpha_t = self.alphas[t]
+        alpha_t = alpha_t.view(-1, *([1] * (x0.dim() - 1)))
 
-        xt = torch.sqrt(alpha_bar_t) * x0 + torch.sqrt(1 - alpha_bar_t) * z
+        sigma_t = self.sigmas[t]
+        sigma_t = sigma_t.view(-1, *([1] * (x0.dim() - 1)))
+
+        weight = self.snr_trunc[t]
+        weight = weight.view(-1, *([1] * (x0.dim() - 1)))
+
+        xt = alpha_t * x0 + sigma_t * z
 
         pred = model(xt, t)
 
-        return torch.nn.functional.mse_loss(pred, z)
+        return (torch.nn.functional.mse_loss(pred, x0, reduction='none') * weight).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -86,35 +85,33 @@ class Diffusion():
             how_many = min(512, amount - i * 512)
 
             xT = torch.randn((how_many,
-                            self.data.data_dims.channels,
-                            self.data.data_dims.height,
-                            self.data.data_dims.width),
-                            device=self.device,
-                            dtype=torch.float32)
+                              self.data.data_dims.channels,
+                              self.data.data_dims.height,
+                              self.data.data_dims.width),
+                              device=self.device,
+                              dtype=torch.float32)
 
             xt = xT
-            for t in range(self.T-1, -1, -1):
+            for t in range(self.T - 1, 0, -1):
 
-                if t > 0:
-                    z = torch.randn_like(xT)
-                else:
-                    z = torch.zeros_like(xT)
+                alpha_s = self.alphas[t - 1]
+                alpha_s = alpha_s.view(-1, *([1] * (xT.dim() - 1)))
 
                 alpha_t = self.alphas[t]
-                alpha_bar_t = self.alphas_bar[t]
-                sigma_t = self.sigmas[t] 
+                alpha_t = alpha_t.view(-1, *([1] * (xT.dim() - 1)))
 
-                prefactor = torch.sqrt(alpha_t) ** (-1)
-                postsummand = sigma_t * z
-                numerator = (1 - alpha_t)
-                denominator = torch.sqrt(1 - alpha_bar_t)
+                sigma_s = self.sigmas[t - 1]
+                sigma_s = sigma_s.view(-1, *([1] * (xT.dim() - 1)))
+
+                sigma_t = self.sigmas[t]
+                sigma_t = sigma_t.view(-1, *([1] * (xT.dim() - 1)))
 
                 t_tensor = torch.full((xt.shape[0],), t, dtype=torch.long, device=xt.device)
                 
                 with torch.no_grad():
                     pred = model(xt, t_tensor)
 
-                xt = prefactor * (xt - (numerator / denominator) * pred) + postsummand   
+                xt = alpha_s * pred + sigma_s * ( (xt - alpha_t * pred) / sigma_t)
 
             samples.append(xt.cpu())
 
@@ -131,9 +128,9 @@ class Diffusion():
 
         train_iter = iter(train_dl)
         for iteration in range(800_000):
-            if iteration % 1_000 == 0:
+            if (iteration + 1) % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
-
+                
             try:
                 x0, _ = next(train_iter)
                 x0 = x0.to(self.device, dtype=torch.float32)
@@ -243,9 +240,5 @@ class Diffusion():
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--sigmas', type=str, choices=['simple', 'other'], default='simple')
-    args = parser.parse_args()
-
-    DDPM = Diffusion(sigma_choice=args.sigmas)
+    DDPM = Diffusion()
     DDPM.train()
