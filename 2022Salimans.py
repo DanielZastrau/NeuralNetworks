@@ -39,6 +39,8 @@ class Diffusion():
             os.mkdir(self.base)
 
         self.grid_path = os.path.join(self.base, 'grids')
+        if not os.path.exists(self.grid_path):
+            os.mkdir(self.grid_path)
 
         self.best_score = 10_000.0
 
