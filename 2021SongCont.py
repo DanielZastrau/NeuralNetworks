@@ -56,7 +56,9 @@ class Diffusion():
 
     def b(self, t: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
 
-        return torch.exp(- 0.5 * (t * self.beta(torch.zeros(1)) + 0.5 * t**2 * (self.beta(torch.ones(1)) - self.beta(torch.zeros(1))))).view(-1, *([1] * (x.dim() - 1)))
+        ones = torch.ones(1, device=self.device)
+        zeroes = torch.zeros(1, device=self.device)
+        return torch.exp(- 0.5 * (t * self.beta(ones) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
     def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module) -> torch.Tensor:
 
@@ -89,7 +91,7 @@ class Diffusion():
         t = torch.rand((x0.shape[0],), device=self.device)
         t = torch.clamp(t, min=1e-5)
 
-        z = torch.randn_like(x0)
+        z = torch.randn_like(x0, device=self.device)
 
         mean = self.b(t, x0)
         variance_sq = 1 - mean**2
@@ -125,12 +127,12 @@ class Diffusion():
             for j in range(self.T):
 
                 t = 1 - j * dt
-                t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=xt.device)
+                t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=self.device)
 
                 xt = xt - self.v(t_tensor, xt, model) * dt
 
             # Final Tweedies application
-            final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=xt.device)
+            final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=self.device)
             with torch.no_grad():
                 final_score_pred = model(xt, final_time)
             xt = (xt + (1 - self.b(final_time, xt)**2) * final_score_pred ) / self.b(final_time, xt)
