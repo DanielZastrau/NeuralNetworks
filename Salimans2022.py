@@ -16,23 +16,23 @@ class Diffusion():
 
     def __init__(self):
 
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
         self.T = 1_000
         t = torch.linspace(0.001, 0.999, self.T)
 
-        self.alphas = torch.cos(0.5 * torch.pi * t)
-        self.sigmas = torch.sqrt(1 - self.alphas**2)
+        self.alphas = torch.cos(0.5 * torch.pi * t).to(self.device)
+        self.sigmas = torch.sqrt(1 - self.alphas**2).to(self.device)
 
-        self.snr = self.alphas**2 / self.sigmas**2
+        self.snr = (self.alphas**2 / self.sigmas**2).to(self.device)
         ones = torch.ones_like(self.snr)
         snr_trunc = torch.maximum(self.snr, ones)
-        self.snr_trunc = torch.clamp(snr_trunc, max=1000.0)
+        self.snr_trunc = torch.clamp(snr_trunc, max=1000.0).to(self.device)
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
             training_evaluation_period_fid_num_samples = 2_000)
         )
-
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.base = '/work/zastrau/Salimans'
         if not os.path.exists(self.base):
