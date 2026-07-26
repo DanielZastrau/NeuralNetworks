@@ -210,7 +210,7 @@ class Diffusion():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
+                    score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
                     uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
                     torch.save(uncompiled_model.state_dict(), score_save_path)
