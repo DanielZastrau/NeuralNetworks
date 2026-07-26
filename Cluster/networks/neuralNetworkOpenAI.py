@@ -20,6 +20,17 @@ from Cluster.utils.nn_utils import (
     timestep_embedding,
 )
 
+class GaussianFourierProjection(nn.Module):
+    """Gaussian Random Fourier Features for continuous timesteps."""
+    def __init__(self, embed_dim: int, scale: float = 16.0):
+        super().__init__()
+        # W is a frozen, non-trainable parameter sampled from a Gaussian
+        self.W = nn.Parameter(th.randn(embed_dim // 2) * scale, requires_grad=False)
+
+    def forward(self, x):
+        # x is the continuous timestep t
+        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
+        return th.cat([th.sin(x_proj), th.cos(x_proj)], dim=-1)
 
 class AttentionPool2d(nn.Module):
     """
@@ -430,25 +441,27 @@ class UNetModel(nn.Module):
 
     def __init__(
         self,
-        image_size,
-        in_channels,
-        model_channels,
-        out_channels,
-        num_res_blocks,
+        image_size: int,
+        in_channels: int,
+        model_channels: int,
+        out_channels: int,
+        num_res_blocks: int,
         attention_resolutions,
         dropout:float=0,
         channel_mult=(1, 2, 4, 8),
-        conv_resample=True,
-        dims=2,
+        conv_resample: bool =True,
+        dims: int =2,
         num_classes=None,
-        use_checkpoint=False,
-        use_fp16=False,
-        num_heads=1,
-        num_head_channels=-1,
-        num_heads_upsample=-1,
-        use_scale_shift_norm=False,
-        resblock_updown=False,
-        use_new_attention_order=False,
+        use_checkpoint: bool =False,
+        use_fp16: bool =False,
+        num_heads: int =1,
+        num_head_channels: int=-1,
+        num_heads_upsample: int =-1,
+        use_scale_shift_norm: bool =False,
+        resblock_updown: bool =False,
+        use_new_attention_order: bool =False,
+        use_rff: bool =False,
+        rff_scale: float =16.0,
     ):
         super().__init__()
 
@@ -471,7 +484,10 @@ class UNetModel(nn.Module):
         self.num_head_channels = num_head_channels
         self.num_heads_upsample = num_heads_upsample
 
+        self.use_rff = use_rff
         time_embed_dim = model_channels * 4
+        if self.use_rff:
+            self.time_embed_proj = GaussianFourierProjection(self.model_channels, scale=rff_scale)
         self.time_embed = nn.Sequential(
             linear(model_channels, time_embed_dim),
             nn.SiLU(),
@@ -641,7 +657,12 @@ class UNetModel(nn.Module):
         ), "must specify y if and only if the model is class-conditional"
 
         hs = []
-        emb = self.time_embed(timestep_embedding(timesteps, self.model_channels))
+
+        if self.use_rff:
+            t_emb = self.time_embed_proj(timesteps)
+        else:
+            t_emb = timestep_embedding(timesteps, self.model_channels)
+        emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
