@@ -28,10 +28,14 @@ class Diffusion():
             training_evaluation_period_fid_num_samples = 2_000)
         )
 
-        self.base = '/work/zastrau/SongCont/DDPM'
+        self.base = '/work/zastrau/SongCont'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
+        self.base = '/work/zastrau/SongConot/DDPM'
+        if not os.path.exists(self.base):
+            os.mkdir(self.base)
+            
         self.grid_path = os.path.join(self.base, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
