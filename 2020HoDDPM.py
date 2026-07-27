@@ -35,6 +35,7 @@ class Diffusion():
         self.grid_path = os.path.join(self.curr_dir, 'grids')
 
         self.best_score = 10_000.0
+        self.score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
 
     def get_sigmas(self, choice: str = 'simple'):
 
@@ -213,19 +214,22 @@ class Diffusion():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
-
                     uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
-                    torch.save(uncompiled_model.state_dict(), score_save_path)
-                    print(f"saved best score model to:  {score_save_path},    score {ema_score}")
+                    torch.save(uncompiled_model.state_dict(), self.score_save_path)
+                    print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
+    def eval(self):
                     
         # ! Final Fid evaluation on 50_000 samples
 
+        # Load the best model
+        model = self.get_model()
+        model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
         eval_ds = self.data.get_dataset_for_full_eval()
 
-        ema.eval()
-        samples = self.sample(model=ema, amount=50_000)
+        model.eval()
+        samples = self.sample(model=model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -245,7 +249,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--sigmas', type=str, choices=['simple', 'other'], default='simple')
+    parser.add_argument('what', type=str, choices=['full', 'train', 'eval'], default='full')
     args = parser.parse_args()
 
     DDPM = Diffusion(sigma_choice=args.sigmas)
-    DDPM.train()
+    if args.what == 'full' or args.what == 'train':
+        DDPM.train()
+
+    if args.what == 'full' or args.what == 'eval':
+        DDPM.eval()
