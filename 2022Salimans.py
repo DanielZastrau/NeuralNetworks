@@ -50,16 +50,16 @@ class Diffusion():
 
     def snr(self, t: torch.Tensor, x: torch.Tensor):
 
-        return (self.alpha(t, x)**2 / self.sigma(t, x)**2).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+        # yields a tensor of shape [B, 1, 1, 1]
+        return (self.alpha(t, x)**2 / self.sigma(t, x)**2).to(self.device)
 
     def snr_trunc(self, t: torch.Tensor, x: torch.Tensor):
 
-        ones = torch.ones_like(x, device=self.device)
-        return torch.maximum(self.snr(t, x), ones).to(self.device).view(-1, *([1] *(x.dim() - 1)))
+        return torch.clamp(self.snr(t, x), min=1.0).to(self.device)
 
     def snr_pp(self, t: torch.Tensor, x: torch.Tensor):
 
-        return (self.snr(t, x) + 1).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+        return (self.snr(t, x) + 1).to(self.device)
 
     def get_model(self):
 
