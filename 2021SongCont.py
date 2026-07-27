@@ -88,6 +88,7 @@ class Diffusion():
         return torch.optim.Adam(model.parameters(), lr=2e-4)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
+        """The 'score prediction' target algebraically reduces to the noise prediction target."""
 
         t = torch.rand((x0.shape[0],), device=self.device)
         t = torch.clamp(t, min=1e-5)

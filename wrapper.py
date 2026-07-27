@@ -92,6 +92,8 @@ if __name__ == "__main__":
     # ! configuration arguments
     parser.add_argument('--dataset', type=str, choices=['cifar10'], default='cifar10',
                         help='which dataset you want to train on options include [cifar10]')
+    parser.add_argument('--horizontal_flips', type=bool, default=False, choices=[True, False])
+    parser.add_argument('--horizontal_flips_p', type=float, default=0.5)
     parser.add_argument('--T', type=float, default=1.0,
                         help='specifies the time horizon T')
     # * 1e-5 as specified by "Song et al 2021 - Score based generative modelling through sdes" and as referenced by "Duong Chemseddine 2025 - Telegraphers Generative Model via Kac Flows"

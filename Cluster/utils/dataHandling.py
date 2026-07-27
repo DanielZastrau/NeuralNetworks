@@ -32,7 +32,15 @@ class DataProvider():
 
     def transform(self):
 
-        return v2.Compose([
+        if self.args.horizontal_flips:
+            return v2.Compose([
+                v2.ToImage(),
+                v2.RandomHorizontalFlip(p=self.args.horizontal_flips_p),
+                v2.ToDtype(torch.float32, scale=True), # scales to [0,1]
+                v2.Normalize((0.5,) * 3, (0.5,) * 3), # scales to [-1, 1]
+            ])
+        else:
+            return v2.Compose([
                 v2.ToImage(),
                 v2.ToDtype(torch.float32, scale=True), # scales to [0,1]
                 v2.Normalize((0.5,) * 3, (0.5,) * 3), # scales to [-1, 1]
