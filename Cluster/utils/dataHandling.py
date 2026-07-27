@@ -37,7 +37,7 @@ class DataProvider():
 
     def transform(self):
 
-        if self.args.horizontal_flips:
+        if self.horizontal_flipping:
             return v2.Compose([
                 v2.ToImage(),
                 v2.RandomHorizontalFlip(p=self.args.horizontal_flips_p),
