@@ -25,6 +25,11 @@ class DataProvider():
 
         self.args = args
 
+        if not 'horizontal_flips' in self.args:
+            self.horizontal_flipping = False
+        else:
+            self.horizontal_flipping = args.horizontal_flips
+
         # channels, width, height
         self.data_dims: Shape = Shape(3, 32, 32)
 
