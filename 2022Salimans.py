@@ -12,21 +12,12 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
     """Implements the base model as described in 2022 - Salimans Ho - Progressive Distillation
-    The prediction target is x"""
+    """
 
-    def __init__(self):
+    def __init__(self, prediction_target: str = 'v'):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-        self.T = 1_000
-        t = torch.linspace(0.001, 0.999, self.T)
-
-        self.alphas = torch.cos(0.5 * torch.pi * t).to(self.device)
-        self.sigmas = torch.sin(0.5 * torch.pi * t).to(self.device)    # is equal to sqrt(1 - cos(0.5 * pi * t)**2)
-
-        self.snr = (self.alphas**2 / self.sigmas**2).to(self.device)
-        ones = torch.ones_like(self.snr)
-        self.snr_trunc = torch.maximum(self.snr, ones)
+        self.prediction_target = prediction_target
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
@@ -37,11 +28,38 @@ class Diffusion():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.grid_path = os.path.join(self.base, 'grids')
+        self.curr_dir = os.path.join(self.base, self.prediction_target)
+        if not os.path.exists(self.curr_dir):
+            os.mkdir(self.curr_dir)
+
+        self.grid_path = os.path.join(self.curr_dir, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
 
         self.best_score = 10_000.0
+        self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
+
+    def alpha(self, t: torch.Tensor, x: torch.Tensor):
+
+        return torch.cos(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+
+    def sigma(self, t: torch.Tensor, x: torch.Tensor):
+        """is equal to sqrt(1 - cos(0.5 * pi * t)**2)"""
+
+        return torch.sin(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+
+    def snr(self, t: torch.Tensor, x: torch.Tensor):
+
+        return (self.alpha(t, x)**2 / self.sigma(t, x)**2).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+
+    def snr_trunc(self, t: torch.Tensor, x: torch.Tensor):
+
+        ones = torch.ones_like(x, device=self.device)
+        return torch.maximum(self.snr(t, x), ones).to(self.device).view(-1, *([1] *(x.dim() - 1)))
+
+    def snr_pp(self, t: torch.Tensor, x: torch.Tensor):
+
+        return (self.snr(t, x) + 1).to(self.device).view(-1, *([1] * (x.dim() - 1)))
 
     def get_model(self):
 
@@ -60,25 +78,33 @@ class Diffusion():
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
-        t = torch.randint(0, self.T, (x0.shape[0],), device=self.device)
-        z = torch.randn_like(x0)
+        t = torch.rand((x0.shape[0],), device=self.device)
+        z = torch.randn_like(x0, device=self.device)
 
-        alpha_t = self.alphas[t]
-        alpha_t = alpha_t.view(-1, *([1] * (x0.dim() - 1)))
-
-        sigma_t = self.sigmas[t]
-        sigma_t = sigma_t.view(-1, *([1] * (x0.dim() - 1)))
-
-        weight = self.snr_trunc[t]
-        weight = weight.view(-1, *([1] * (x0.dim() - 1)))
+        alpha_t = self.alpha(t, x0)
+        sigma_t = self.sigma(t, x0)
+        weight = self.snr_trunc(t, x0)
 
         xt = alpha_t * x0 + sigma_t * z
 
         pred = model(xt, t)
 
-        return (torch.nn.functional.mse_loss(pred, x0, reduction='none') * weight).mean()
+        if self.prediction_target == 'x0':
+
+            return (torch.nn.functional.mse_loss(pred, x0, reduction='none') * weight).mean()
+
+        else:    # self.prediction_target == 'v'
+
+            divisor = self.snr_pp(t, x0)
+
+            vt = alpha_t * z - sigma_t * x0
+
+            return (torch.nn.functional.mse_loss(pred, vt, reduction='none') * weight / divisor).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        T = 1_000
+        dt = 1 / T
 
         samples = []
 
@@ -93,29 +119,30 @@ class Diffusion():
                               dtype=torch.float32)
 
             xt = xT
-            for t in range(self.T - 1, 0, -1):
+            for i in range(0, T):
 
-                alpha_s = self.alphas[t - 1]
-                alpha_s = alpha_s.view(-1, *([1] * (xT.dim() - 1)))
+                t = torch.full((xt.shape[0],), 1 - i * dt, dtype=torch.float32, device=self.device)
 
-                alpha_t = self.alphas[t]
-                alpha_t = alpha_t.view(-1, *([1] * (xT.dim() - 1)))
+                alpha_s = self.alpha(t - dt, xt)
+                alpha_t = self.alpha(t, xt)
 
-                sigma_s = self.sigmas[t - 1]
-                sigma_s = sigma_s.view(-1, *([1] * (xT.dim() - 1)))
-
-                sigma_t = self.sigmas[t]
-                sigma_t = sigma_t.view(-1, *([1] * (xT.dim() - 1)))
-
-                t_tensor = torch.full((xt.shape[0],), t, dtype=torch.long, device=xt.device)
+                sigma_s = self.sigma(t - dt, xt)
+                sigma_t = self.sigma(t, xt)
                 
                 with torch.no_grad():
-                    pred = model(xt, t_tensor)
+                    pred = model(xt, t)
 
-                # we are working with tensors in the range [-1, 1]
-                pred = pred.clamp(min=-1.0, max=1.0)
+                if self.prediction_target == 'x0':
+                    # we are working with tensors in the range [-1, 1]
+                    x0_pred = pred.clamp(min=-1.0, max=1.0)
 
-                xt = alpha_s * pred + sigma_s * ( (xt - alpha_t * pred) / sigma_t)
+                    xt = alpha_s * pred + sigma_s * ( (xt - alpha_t * pred) / sigma_t)
+
+                else:    # self.prediction_target == 'v':
+
+                    x0_pred = (alpha_t * xt - sigma_t * pred).clamp(min=-1.0, max=1.0)
+
+                xt = alpha_s * x0_pred + sigma_s * ( (xt - alpha_t * x0_pred) / sigma_t)
 
             final_t_tensor = torch.full((xt.shape[0],), 0, dtype=torch.float32, device=self.device)
             with torch.no_grad():
@@ -220,19 +247,22 @@ class Diffusion():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    score_save_path = os.path.join(self.base, 'best_score_model.pth')
-
                     uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
-                    torch.save(uncompiled_model.state_dict(), score_save_path)
-                    print(f"saved best score model to:  {score_save_path},    score {ema_score}")
+                    torch.save(uncompiled_model.state_dict(), self.score_save_path)
+                    print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
-                    
+    def eval(self):
+
         # ! Final Fid evaluation on 50_000 samples
+
+        # Load the best model
+        model = self.get_model()
+        model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
 
         eval_ds = self.data.get_dataset_for_full_eval()
 
-        ema.eval()
-        samples = self.sample(model=ema, amount=50_000)
+        model.eval()
+        samples = self.sample(model=model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -250,5 +280,15 @@ class Diffusion():
 
 if __name__ == '__main__':
 
-    DDPM = Diffusion()
-    DDPM.train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--prediction-target', type=str, default='v', choices=['v', 'x0'])
+    parser.add_argument('--what', type=str, default='full', choices=['full', 'train', 'eval'])
+
+    args = parser.parse_args()
+
+    Salimans = Diffusion(prediction_target=args.prediction_target)
+    if args.what == 'full' or args.what == 'train':
+        Salimans.train()
+
+    if args.what == 'full' or args.what == 'eval':
+        Salimans.eval()
