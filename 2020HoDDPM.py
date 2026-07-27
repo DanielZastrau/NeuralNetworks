@@ -249,7 +249,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--sigmas', type=str, choices=['simple', 'other'], default='simple')
-    parser.add_argument('what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     args = parser.parse_args()
 
     DDPM = Diffusion(sigma_choice=args.sigmas)
