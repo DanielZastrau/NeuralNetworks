@@ -58,14 +58,15 @@ class Diffusion():
 
         ones = torch.ones(1, device=self.device)
         zeroes = torch.zeros(1, device=self.device)
-        return torch.exp(- 0.5 * (t * self.beta(ones) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
+        return torch.exp(- 0.5 * (t * self.beta(zeroes) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
     def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module) -> torch.Tensor:
 
+        variance = torch.sqrt(1 - self.b(t, x)**2)
         with torch.no_grad():
-            pred_score = model(x, t)
+            pred_noise = model(x, t)
 
-        return self.f(t, x) - 0.5 * self.g(t, x)**2 * pred_score
+        return self.f(t, x) - 0.5 * self.g(t, x)**2 * (pred_noise / variance)
 
 
     def get_model(self):
@@ -99,14 +100,10 @@ class Diffusion():
 
         xt = mean * x0 + variance * z
         
-        pred_score = model(xt, t)
-        target_score = -z / variance
+        pred_noise = model(xt, t)
+        target_noise = -z
 
-        # The dimensionality denominator is irrelevant for the minimum, it gets absorbed by the propto symbol in the paper
-        weight = variance_sq
-
-        mse_loss = torch.nn.functional.mse_loss(pred_score, target_score, reduction='none')
-        return (weight * mse_loss).view(x0.shape[0], -1).sum(dim=1).mean()
+        return torch.nn.functional.mse_loss(pred_noise, target_noise)
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -133,10 +130,14 @@ class Diffusion():
 
             # Final Tweedies application
             final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=self.device)
+            final_variance = torch.sqrt(1 - self.b(final_time, xt)**2)
             with torch.no_grad():
-                final_score_pred = model(xt, final_time)
-            xt = (xt + (1 - self.b(final_time, xt)**2) * final_score_pred ) / self.b(final_time, xt)
+                final_noise_pred = model(xt, final_time)
+            xt = (xt + final_variance * final_noise_pred ) / self.b(final_time, xt)
 
+
+            if amount == 50_000:
+                print(f'sampled {i * 512 + how_many} / 50_000')
             samples.append(xt.cpu())
 
         return torch.cat(samples, dim=0)
@@ -172,7 +173,7 @@ class Diffusion():
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             print(f'Grad norm: {grad_norm.item()}')
 
             optim.step()

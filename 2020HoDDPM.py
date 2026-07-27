@@ -11,10 +11,15 @@ from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
+    """2020 - Ho et al - Denoising Diffusion Probabilistic Models
+    Their best Cifar-10 50k Fid was 3.17
+    
+    Best 2k Fid with T=1_000 was 26.7
+    """
 
     def __init__(self, sigma_choice: str = 'simple'):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
+
         self.T = 1000
         self.betas = torch.linspace(0.0001, 0.02, self.T)
         self.alphas = 1 - self.betas
@@ -118,6 +123,8 @@ class Diffusion():
 
                 xt = prefactor * (xt - (numerator / denominator) * pred) + postsummand   
 
+            if amount == 50_000:
+                print(f'sampled {i * 512 + how_many} / 50_000')
             samples.append(xt.cpu())
 
         return torch.cat(samples, dim=0)

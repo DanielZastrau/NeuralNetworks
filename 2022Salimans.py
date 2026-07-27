@@ -22,12 +22,11 @@ class Diffusion():
         t = torch.linspace(0.001, 0.999, self.T)
 
         self.alphas = torch.cos(0.5 * torch.pi * t).to(self.device)
-        self.sigmas = torch.sqrt(1 - self.alphas**2).to(self.device)
+        self.sigmas = torch.sin(0.5 * torch.pi * t).to(self.device)    # is equal to sqrt(1 - cos(0.5 * pi * t)**2)
 
         self.snr = (self.alphas**2 / self.sigmas**2).to(self.device)
         ones = torch.ones_like(self.snr)
-        snr_trunc = torch.maximum(self.snr, ones)
-        self.snr_trunc = torch.clamp(snr_trunc, max=1000.0).to(self.device)
+        self.snr_trunc = torch.maximum(self.snr, ones)
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
@@ -113,9 +112,18 @@ class Diffusion():
                 with torch.no_grad():
                     pred = model(xt, t_tensor)
 
+                # we are working with tensors in the range [-1, 1]
+                pred = pred.clamp(min=-1.0, max=1.0)
+
                 xt = alpha_s * pred + sigma_s * ( (xt - alpha_t * pred) / sigma_t)
 
-            samples.append(xt.cpu())
+            final_t_tensor = torch.full((xt.shape[0],), 0, dtype=torch.float32, device=self.device)
+            with torch.no_grad():
+                final_pred_x0 = model(xt, final_t_tensor)
+
+            if amount == 50_000:
+                print(f'sampled {i * 512 + how_many} / 50_000')
+            samples.append(final_pred_x0.cpu())
 
         return torch.cat(samples, dim=0)
 
@@ -150,7 +158,7 @@ class Diffusion():
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             print(f'Grad norm: {grad_norm.item()}')
 
             optim.step()
