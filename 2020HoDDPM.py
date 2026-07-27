@@ -14,11 +14,16 @@ class Diffusion():
     """2020 - Ho et al - Denoising Diffusion Probabilistic Models
     Their best Cifar-10 50k Fid was 3.17
     
-    Best 2k Fid with T=1_000 was 26.7
+    no random horizontal flips and gradient clipping:
+        2k FID with T=1_000: 26.7
+        50k FID with T=1_000: 3.7
+    random horizontal flips and no gradient clipping:
     """
 
-    def __init__(self, sigma_choice: str = 'simple'):
+    def __init__(self, sigma_choice: str = 'simple', gradient_clipping: bool = False, horizontal_flipping: bool = True):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+        self.gradient_clipping = gradient_clipping
 
         self.T = 1000
         self.betas = torch.linspace(0.0001, 0.02, self.T)
@@ -27,8 +32,10 @@ class Diffusion():
         self.sigmas = self.get_sigmas(choice = sigma_choice)
 
         self.data = DataProvider(args=argparse.Namespace(
-            training_batch_size = 128, eval_num_samples = 50_000, training_evaluation_period_fid_num_samples = 2_000))
-
+            training_batch_size = 128, eval_num_samples = 50_000,
+            training_evaluation_period_fid_num_samples = 2_000,
+            horizontal_flips = horizontal_flipping, horizontal_flips_p = 0.5,)
+        )
 
         self.base = '/work/zastrau/diffusionHo'
         if not os.path.exists(self.base):
@@ -160,7 +167,10 @@ class Diffusion():
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm(model.parameters(), max_norm=1.0)
+            if self.gradient_clipping:
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            else:
+                grad_norm = torch.sqrt(sum(p.grad.data.norm() ** 2 for p in model.parameters() if p.grad is not None))
             print(f'Grad norm: {grad_norm.item()}')
 
             optim.step()
@@ -258,9 +268,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--sigmas', type=str, choices=['simple', 'other'], default='simple')
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--horizontal-flipping', type=bool, default=True)
+    parser.add_argument('--grad-clipping', type=bool, default=False)
     args = parser.parse_args()
 
-    DDPM = Diffusion(sigma_choice=args.sigmas)
+    DDPM = Diffusion(sigma_choice=args.sigmas, gradient_clipping=args.grad_clipping, horizontal_flipping=args.horizontal_flipping)
     if args.what == 'full' or args.what == 'train':
         DDPM.train()
 
