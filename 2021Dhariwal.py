@@ -27,7 +27,7 @@ class Diffusion():
 
         # Directly specifying the alphas_bar
         self.alphas_bar = (self.cosine_values / self.cosine_values[0]).to(self.device)
-        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]]).to(self.device)
+        self.alphas_bar_previous = torch.cat([torch.tensor([1.0], device=self.device), self.alphas_bar[:-1]]).to(self.device)
 
         # Defining the noise schedule in terms of alphas_bar
         self.betas = (1 - (self.alphas_bar / self.alphas_bar_previous)).to(self.device)
@@ -38,7 +38,7 @@ class Diffusion():
 
         # Recalculating the alpha_bar values to avoid numerical error accumulation
         self.alphas_bar = torch.cumprod(self.alphas, dim=0).to(self.device)
-        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]]).to(self.device)
+        self.alphas_bar_previous = torch.cat([torch.tensor([1.0], device=self.device), self.alphas_bar[:-1]]).to(self.device)
 
         # posterior is q(x_{t-1} \mid x_t, x_0) = N(x_{t-1} \mid \tilde \mu_t(x_t, x_0), \tilde \beta_t I_d)
         self.betas_tilde = (self.betas * (1.0 - self.alphas_bar_previous) / (1.0 - self.alphas_bar)).to(self.device)
@@ -84,7 +84,7 @@ class Diffusion():
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
         t = torch.randint(0, self.T, (x0.shape[0],), device=self.device)
-        noise = torch.randn_like(x0)
+        noise = torch.randn_like(x0, device=self.device)
 
         alpha_t = self.alphas[t].view(-1, *([1] * (x0.dim() - 1)))
         alpha_bar_t = self.alphas_bar[t].view(-1, *([1] * (x0.dim() - 1)))
@@ -120,7 +120,7 @@ class Diffusion():
         kl = 0.5 * (pred_log_variance - log_beta_tilde_t + (torch.exp(log_beta_tilde_t) + (true_mean - pred_mean_sg)**2) / pred_variance - 1.0)
         
         # Mask out t=0 to prevent singular KL explosion
-        loss_vlb = torch.where((t == 0).view(-1, 1), torch.zeros_like(kl), kl).mean(dim=1)
+        loss_vlb = torch.where((t == 0).view(-1, 1), torch.zeros_like(kl, device=self.device), kl).mean(dim=1)
         
         lambda_weight = 0.001
         return (loss_simple + lambda_weight * loss_vlb).mean()
@@ -140,7 +140,7 @@ class Diffusion():
                               dtype=torch.float32)
             xt = xT
 
-            steps = torch.round(torch.linspace(self.T - 1, 0, self.S,)).long()
+            steps = torch.round(torch.linspace(self.T - 1, 0, self.S, device=self.device)).long()
 
             with torch.no_grad():
                 for i, t in enumerate(steps):
@@ -148,25 +148,25 @@ class Diffusion():
                     t_tensor = torch.full((500,), t.item(), dtype=torch.long, device=self.device)
 
                     # Determine the previous step in the subsequence (S_{t-1})
-                    t_prev = steps[i + 1] if i < len(steps) - 1 else torch.tensor(-1)
+                    t_prev = steps[i + 1] if i < len(steps) - 1 else torch.tensor(-1, device=self.device)
 
-                    z = torch.randn_like(xt) if t > 0 else torch.zeros_like(xt)
+                    z = torch.randn_like(xt, device=self.device) if t > 0 else torch.zeros_like(xt, device=self.device)
                     
                     out = model(xt, t_tensor.float())
                     pred_noise, pred_v = out[:, :self.data.data_dims.channels], out[:, self.data.data_dims.channels:]
                     
                     # Fetch \bar{\alpha} for current and previous subsequence steps
                     alpha_bar_t = self.alphas_bar[t]
-                    alpha_bar_t_prev = self.alphas_bar[t_prev] if t_prev >= 0 else torch.tensor(1.0)
+                    alpha_bar_t_prev = self.alphas_bar[t_prev] if t_prev >= 0 else torch.tensor(1.0, device=self.device)
                     
                     # Recompute schedule parameters for the skipped interval
-                    beta_S_t = 1.0 - (alpha_bar_t / alpha_bar_t_prev)
-                    alpha_S_t = 1.0 - beta_S_t
-                    beta_tilde_S_t = beta_S_t * (1.0 - alpha_bar_t_prev) / (1.0 - alpha_bar_t)
+                    beta_S_t = (1.0 - (alpha_bar_t / alpha_bar_t_prev)).to(self.device)
+                    alpha_S_t = (1.0 - beta_S_t).to(self.device)
+                    beta_tilde_S_t = (beta_S_t * (1.0 - alpha_bar_t_prev) / (1.0 - alpha_bar_t)).to(self.device)
                     
                     # Calculate log variances for the subsequence
-                    log_beta_S_t = torch.log(beta_S_t)
-                    log_beta_tilde_S_t = torch.log(beta_tilde_S_t.clamp(min=1e-20))
+                    log_beta_S_t = torch.log(beta_S_t).to(self.device)
+                    log_beta_tilde_S_t = torch.log(beta_tilde_S_t.clamp(min=1e-20)).to(self.device)
 
                     # The predicted mean uses the recomputed alpha_S_t and beta_S_t
                     pred_mean = torch.sqrt(alpha_S_t)**(-1) * (xt - beta_S_t / torch.sqrt(1.0 - alpha_bar_t) * pred_noise)
