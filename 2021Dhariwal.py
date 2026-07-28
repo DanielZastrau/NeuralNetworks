@@ -79,7 +79,7 @@ class Diffusion():
 
     def get_optim(self, model: torch.nn.Module):
 
-        return torch.optim.Adam(model.parameters, lr=1e-4)
+        return torch.optim.Adam(model.parameters(), lr=1e-4)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
