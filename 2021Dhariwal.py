@@ -21,33 +21,33 @@ class Diffusion():
         self.T = 4_000
         self.S = 4_000
 
-        t = torch.linspace(0, 1, self.T)
+        t = torch.linspace(0, 1, self.T, device=self.device)
         s = 0.008 
-        self.cosine_values = torch.cos(0.5 * torch.pi * (t + s) / (1 + s))**2
+        self.cosine_values = (torch.cos(0.5 * torch.pi * (t + s) / (1 + s))**2).to(self.device)
 
         # Directly specifying the alphas_bar
-        self.alphas_bar = self.cosine_values / self.cosine_values[0]
-        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]])
+        self.alphas_bar = (self.cosine_values / self.cosine_values[0]).to(self.device)
+        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]]).to(self.device)
 
         # Defining the noise schedule in terms of alphas_bar
-        self.betas = 1 - (self.alphas_bar / self.alphas_bar_previous)
-        self.betas = self.betas.clamp(min=1e-5, max=0.999)
+        self.betas = (1 - (self.alphas_bar / self.alphas_bar_previous)).to(self.device)
+        self.betas = self.betas.clamp(min=1e-5, max=0.999).to(self.device)
 
         # the usual identity alphas = 1 - betas
-        self.alphas = 1.0 - self.betas
+        self.alphas = (1.0 - self.betas).to(self.device)
 
         # Recalculating the alpha_bar values to avoid numerical error accumulation
-        self.alphas_bar = torch.cumprod(self.alphas, dim=0)
-        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]])
+        self.alphas_bar = torch.cumprod(self.alphas, dim=0).to(self.device)
+        self.alphas_bar_previous = torch.cat([torch.tensor([1.0]), self.alphas_bar[:-1]]).to(self.device)
 
         # posterior is q(x_{t-1} \mid x_t, x_0) = N(x_{t-1} \mid \tilde \mu_t(x_t, x_0), \tilde \beta_t I_d)
-        self.betas_tilde = self.betas * (1.0 - self.alphas_bar_previous) / (1.0 - self.alphas_bar)
-        self.mus_tilde_coefficient_one = self.betas * torch.sqrt(self.alphas_bar_previous) / (1.0 - self.alphas_bar)
-        self.mus_tilde_coefficient_two = (1.0 - self.alphas_bar_previous) * torch.sqrt(self.alphas) / (1.0 - self.alphas_bar)
+        self.betas_tilde = (self.betas * (1.0 - self.alphas_bar_previous) / (1.0 - self.alphas_bar)).to(self.device)
+        self.mus_tilde_coefficient_one = (self.betas * torch.sqrt(self.alphas_bar_previous) / (1.0 - self.alphas_bar)).to(self.device)
+        self.mus_tilde_coefficient_two = ((1.0 - self.alphas_bar_previous) * torch.sqrt(self.alphas) / (1.0 - self.alphas_bar)).to(self.device)
 
         # Needed for Variance calculation \Sigma_\theta(t, xt) = \exp(v \log \beta_t + (1 - v) \log \tilde \beta_t).
-        self.log_betas = torch.log(self.betas)
-        self.log_betas_tilde = torch.log(self.betas_tilde.clamp(min=1e-20))
+        self.log_betas = torch.log(self.betas).to(self.device)
+        self.log_betas_tilde = torch.log(self.betas_tilde.clamp(min=1e-20)).to(self.device)
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
