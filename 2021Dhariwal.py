@@ -120,7 +120,7 @@ class Diffusion():
         kl = 0.5 * (pred_log_variance - log_beta_tilde_t + (torch.exp(log_beta_tilde_t) + (true_mean - pred_mean_sg)**2) / pred_variance - 1.0)
         
         # Mask out t=0 to prevent singular KL explosion
-        loss_vlb = torch.where((t == 0).view(-1, 1), torch.zeros_like(kl, device=self.device), kl).mean(dim=1)
+        loss_vlb = torch.where((t == 0).view(-1, *([1] * (x0.dim() - 1))), torch.zeros_like(kl, device=self.device), kl).mean(dim=1)
         
         lambda_weight = 0.001
         return (loss_simple + lambda_weight * loss_vlb).mean()
