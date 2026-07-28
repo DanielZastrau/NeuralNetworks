@@ -145,7 +145,7 @@ class Diffusion():
             with torch.no_grad():
                 for i, t in enumerate(steps):
                     
-                    t_tensor = torch.full((500,), t.item(), dtype=torch.long, device=self.device)
+                    t_tensor = torch.full((xt.shape[0],), t.item(), dtype=torch.long, device=self.device)
 
                     # Determine the previous step in the subsequence (S_{t-1})
                     t_prev = steps[i + 1] if i < len(steps) - 1 else torch.tensor(-1, device=self.device)
