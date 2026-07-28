@@ -74,7 +74,22 @@ class Diffusion():
 
     def get_optim(self, model: torch.nn.Module):
 
-        return torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.001)
+        optim = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.001) 
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer=optim,
+            schedulers=[
+                torch.optim.lr_scheduler.LinearLR(optimizer=optim,
+                                                  start_factor=1e-8,
+                                                  end_factor=1.0,
+                                                  total_iters=1_000),
+                torch.optim.lr_scheduler.ConstantLR(optimizer=optim,
+                                                    factor=1.0,
+                                                    total_iters=1),
+            ],
+            milestones=[1_000]
+        )
+
+        return optim, scheduler
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
@@ -87,7 +102,7 @@ class Diffusion():
 
         xt = alpha_t * x0 + sigma_t * z
 
-        pred = model(xt, t)
+        pred = model(xt, t * 1_000)
 
         if self.prediction_target == 'x0':
 
@@ -130,13 +145,11 @@ class Diffusion():
                 sigma_t = self.sigma(t, xt)
                 
                 with torch.no_grad():
-                    pred = model(xt, t)
+                    pred = model(xt, t * 1_000)
 
                 if self.prediction_target == 'x0':
                     # we are working with tensors in the range [-1, 1]
                     x0_pred = pred.clamp(min=-1.0, max=1.0)
-
-                    xt = alpha_s * pred + sigma_s * ( (xt - alpha_t * pred) / sigma_t)
 
                 else:    # self.prediction_target == 'v':
 
@@ -146,7 +159,7 @@ class Diffusion():
 
             final_t_tensor = torch.full((xt.shape[0],), 0, dtype=torch.float32, device=self.device)
             with torch.no_grad():
-                final_pred_x0 = model(xt, final_t_tensor)
+                final_pred_x0 = model(xt, final_t_tensor * 1_000)
 
             if amount == 50_000:
                 print(f'sampled {i * 512 + how_many} / 50_000')
@@ -158,7 +171,7 @@ class Diffusion():
 
         model = self.get_model()
         ema = self.get_ema(model=model)
-        optim = self.get_optim(model=model)
+        optim, scheduler = self.get_optim(model=model)
 
         train_dl, test_dl = self.data.get_datasets_for_training()
         eval_dl = self.data.get_dataset_for_periodic_eval()
@@ -189,6 +202,7 @@ class Diffusion():
             print(f'Grad norm: {grad_norm.item()}')
 
             optim.step()
+            scheduler.step()
             ema.update_parameters(model)
 
 
