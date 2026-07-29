@@ -18,6 +18,8 @@ class Diffusion():
         2k FID with T=1_000: 26.7
         50k FID with T=1_000: 3.7
     random horizontal flips and no gradient clipping:
+        2k FID with T=1_000:  26.3
+        50k FID with T=1_000:  3.5
     """
 
     def __init__(self, sigma_choice: str = 'simple', gradient_clipping: bool = False, horizontal_flipping: bool = True):
