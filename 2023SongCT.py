@@ -21,7 +21,7 @@ class ConsistencyModel():
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
-            training_batch_size = 512, eval_num_samples = 50_000,
+            training_batch_size = 128, eval_num_samples = 50_000,
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
