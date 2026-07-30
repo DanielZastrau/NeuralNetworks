@@ -12,6 +12,13 @@ from Cluster.networks.neuralNetworkOpenAI  import UNetModel
 
 class Diffusion():
     """2021 - Nichol & Dhariwal - Improved DDPM
+
+    Improvements / Differences include:
+        - cosine schedule
+        - T = 4_000 instead of 1_000
+        - Hybrid training objective
+        - also learning the variance
+        - larger model
     """
 
     def __init__(self):
