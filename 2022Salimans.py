@@ -12,6 +12,10 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Diffusion():
     """Implements the base model as described in 2022 - Salimans Ho - Progressive Distillation
+
+    [30.07.26] - What they didn't mention in the paper is that they use horizontal flipping. I found that in their official implementation
+    [30.07.26] - For some reason I had a final integration step after the sampling loop, which I now removed.
+
     """
 
     def __init__(self, prediction_target: str = 'v'):
@@ -21,7 +25,8 @@ class Diffusion():
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
-            training_evaluation_period_fid_num_samples = 2_000)
+            training_evaluation_period_fid_num_samples = 2_000,
+            horizontal_flips = True, horizontal_flips_p = 0.5,)
         )
 
         self.base = '/work/zastrau/Salimans'
@@ -40,11 +45,12 @@ class Diffusion():
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
     def alpha(self, t: torch.Tensor, x: torch.Tensor):
+        # ? See the trigonometric formulation in Appendix D
 
         return torch.cos(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
 
     def sigma(self, t: torch.Tensor, x: torch.Tensor):
-        """is equal to sqrt(1 - cos(0.5 * pi * t)**2)"""
+        # ? See the trigonometric formulation in Appendix D
 
         return torch.sin(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
 
@@ -58,6 +64,7 @@ class Diffusion():
         return torch.clamp(self.snr(t, x), min=1.0).to(self.device)
 
     def snr_pp(self, t: torch.Tensor, x: torch.Tensor):
+        """snr + 1"""
 
         return (self.snr(t, x) + 1).to(self.device)
 
@@ -66,7 +73,7 @@ class Diffusion():
         return UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=256, channel_mult=(1, 1, 1),
                          num_res_blocks=3, attention_resolutions=(2, 4),
-                         dropout=0.2).to(self.device)
+                         dropout=0.2,).to(self.device)
 
     def get_ema(self, model: torch.nn.Module):
 
@@ -93,7 +100,7 @@ class Diffusion():
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
-        t = torch.rand((x0.shape[0],), device=self.device)
+        t = torch.rand((x0.shape[0],), device=self.device).clamp(min=1e-5)
         z = torch.randn_like(x0, device=self.device)
 
         alpha_t = self.alpha(t, x0)
@@ -110,11 +117,9 @@ class Diffusion():
 
         else:    # self.prediction_target == 'v'
 
-            divisor = self.snr_pp(t, x0)
-
             vt = alpha_t * z - sigma_t * x0
 
-            return (torch.nn.functional.mse_loss(pred, vt, reduction='none') * weight / divisor).mean()
+            return torch.nn.functional.mse_loss(pred, vt)
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -137,33 +142,34 @@ class Diffusion():
             for i in range(0, T):
 
                 t = torch.full((xt.shape[0],), 1 - i * dt, dtype=torch.float32, device=self.device)
-
-                alpha_s = self.alpha(t - dt, xt)
-                alpha_t = self.alpha(t, xt)
-
-                sigma_s = self.sigma(t - dt, xt)
-                sigma_t = self.sigma(t, xt)
                 
                 with torch.no_grad():
                     pred = model(xt, t * 1_000)
 
                 if self.prediction_target == 'x0':
+                    alpha_s = self.alpha(t - dt, xt)
+                    alpha_t = self.alpha(t, xt)
+
+                    sigma_s = self.sigma(t - dt, xt)
+                    sigma_t = self.sigma(t, xt)
+
                     # we are working with tensors in the range [-1, 1]
                     x0_pred = pred.clamp(min=-1.0, max=1.0)
 
+                    # ? Keep in mind that sigma_t = sin(0.5 * pi * t), for t to zero, this causes a division by increasingly small values
+                    # ? But, since sampling is done in discrete time, this is still stable. 
+                    xt = alpha_s * x0_pred + sigma_s * ( (xt - alpha_t * x0_pred) / sigma_t)
+
                 else:    # self.prediction_target == 'v':
+                    # ? angular update, see appendix d, more stable as it is division free
 
-                    x0_pred = (alpha_t * xt - sigma_t * pred).clamp(min=-1.0, max=1.0)
+                    phi_dt = 0.5 * torch.pi * dt
+                    xt = torch.cos(phi_dt) * xt - torch.sin(phi_dt) * pred
 
-                xt = alpha_s * x0_pred + sigma_s * ( (xt - alpha_t * x0_pred) / sigma_t)
-
-            final_t_tensor = torch.full((xt.shape[0],), 0, dtype=torch.float32, device=self.device)
-            with torch.no_grad():
-                final_pred_x0 = model(xt, final_t_tensor * 1_000)
-
+            xt = xt.clamp(min=-1.0, max=1.0)
+            samples.append(xt.cpu())
             if amount == 50_000:
                 print(f'sampled {i * 512 + how_many} / 50_000')
-            samples.append(final_pred_x0.cpu())
 
         return torch.cat(samples, dim=0)
 
