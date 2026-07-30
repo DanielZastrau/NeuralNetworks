@@ -15,6 +15,15 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class ConsistencyModel():
     """2023 - Song et al. - Consistency Models
+
+    [30.07.26] - Ahh okay OpenAI publishes a model, which only becomes viable once you are rich. who would have thought.
+                    Training the model on Cifar-10 with 1 GPU takes about ~200 - ~220 hours. That is why they trained
+                    on 8 GPUS and their larger models for LSUN for example on 64 GPUs.
+    [30.07.26] - I will just let the task run to completion in the 144 hours I alloted to it and then use whatever best
+                    FID it achieved. Maybe in the future I will tackle implementing the distributed version on multiple GPUs.
+    [30.07.26] - I just noticed that I had a bright moment when starting the job. Taking the hint from the 8 GPUs they used,
+                    I was cautious enough to just set the time limit to 168 hours. That should allow it to get through roughly
+                    640k iterations.
     """
 
     def __init__(self):
