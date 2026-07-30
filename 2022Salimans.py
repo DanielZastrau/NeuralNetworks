@@ -164,7 +164,7 @@ class Diffusion():
                     # ? angular update, see appendix d, more stable as it is division free
 
                     phi_dt = 0.5 * torch.pi * dt
-                    xt = torch.cos(phi_dt) * xt - torch.sin(phi_dt) * pred
+                    xt = torch.cos(torch.tensor(phi_dt)) * xt - torch.sin(torch.tensor(phi_dt)) * pred
 
             xt = xt.clamp(min=-1.0, max=1.0)
             samples.append(xt.cpu())
