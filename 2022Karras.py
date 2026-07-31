@@ -103,7 +103,7 @@ class EDM():
         cout = self.c_out(sigma=sigma_bc)
         cnoise = self.c_noise(sigma=sigma).flatten()
 
-        t_emb = timestep_embedding(cnoise, self.model_channels)
+        t_emb = timestep_embedding(cnoise * self.time_factor, self.model_channels)
         emb = self.model.time_embed(t_emb)
 
         if aug_cond is None:
