@@ -104,12 +104,12 @@ class EDM():
         cnoise = self.c_noise(sigma=sigma).flatten()
 
         t_emb = timestep_embedding(cnoise, self.model_channels)
-        emb = model.time_embed(t_emb)
+        emb = self.model.time_embed(t_emb)
 
         if aug_cond is None:
             aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
 
-        emb = emb + model.aug_proj(aug_cond)
+        emb = emb + self.model.aug_proj(aug_cond)
 
         pred = model(cin * x, timesteps = None, emb_override=emb)
 
@@ -127,37 +127,35 @@ class EDM():
     def get_model(self):
 
         #! the network natively implements group normalization
-        model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
+        self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(2, 2, 2),
                          num_res_blocks=4, attention_resolutions=(2,),
                          dropout=0.13, use_new_attention_order=True,)
 
-        model.aug_proj = torch.nn.Linear(9, model.model_channels * 4)
+        self.model.aug_proj = torch.nn.Linear(9, model.model_channels * 4)
 
-        return model.to(self.device)
+        self.model.to(self.device)
 
-    def get_ema(self, model: torch.nn.Module):
+    def get_ema(self):
 
-        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9998)).to(self.device)
+        self.ema = torch.optim.swa_utils.AveragedModel(self.model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9998)).to(self.device)
 
-    def get_optim(self, model: torch.nn.Module):
+    def get_optim(self):
 
-        optim = torch.optim.Adam(model.parameters(), lr=1e-3) 
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=optim,
+        self.optim = torch.optim.Adam(self.model.parameters(), lr=1e-3) 
+        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer=self.optim,
             schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=optim,
+                torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
                                                   start_factor=0.2,
                                                   end_factor=1.0,
                                                   total_iters=self.lr_warmup),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=optim,
+                torch.optim.lr_scheduler.ConstantLR(optimizer=self.optim,
                                                     factor=1.0,
                                                     total_iters=1),
             ],
             milestones=[self.lr_warmup]
         )
-
-        return optim, scheduler
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
@@ -223,9 +221,9 @@ class EDM():
 
     def train(self):
 
-        model = self.get_model()
-        ema = self.get_ema(model=model)
-        optim, scheduler = self.get_optim(model=model)
+        self.get_model()
+        self.get_ema()
+        self.get_optim()
 
         train_dl, test_dl = self.data.get_datasets_for_training()
         eval_dl = self.data.get_dataset_for_periodic_eval()
@@ -243,31 +241,31 @@ class EDM():
                 x0, _ = next(train_iter)
                 x0 = x0.to(self.device, dtype=torch.float32)
 
-            model.train()
-            ema.train()
+            self.model.train()
+            self.ema.train()
 
-            optim.zero_grad()
+            self.optim.zero_grad()
 
-            loss = self.loss(model=model, x0=x0)
+            loss = self.loss(model=self.model, x0=x0)
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.sqrt(sum(p.grad.data.norm() ** 2 for p in model.parameters() if p.grad is not None))
+            grad_norm = torch.sqrt(sum(p.grad.data.norm() ** 2 for p in self.model.parameters() if p.grad is not None))
             print(f'Grad norm: {grad_norm.item()}')
 
-            optim.step()
-            scheduler.step()
-            ema.update_parameters(model)
+            self.optim.step()
+            self.scheduler.step()
+            self.ema.update_parameters(self.model)
 
-            if iteration % 5000 == 0:
-                ema.eval()
+            if (iteration + 1) % 5000 == 0:
+                self.ema.eval()
                 loss = 0
 
                 with torch.no_grad():
                     for x0, _ in test_dl:
                         x0 = x0.to(self.device, dtype=torch.float32)
 
-                        loss += self.loss(model=ema, x0=x0).detach()
+                        loss += self.loss(model=self.ema, x0=x0).detach()
 
                 avg_loss = loss.item() / len(test_dl)
                 print(f'>>>>>>>>>> avg test loss:    {avg_loss}')
@@ -275,9 +273,9 @@ class EDM():
 
             # regularly sample a small grid to check progress
             if (iteration + 1) % 10_000 == 0:
-                ema.eval()
+                self.ema.eval()
     
-                samples = self.sample(model=ema, amount=64)    # are [-1, 1]
+                samples = self.sample(model=self.ema, amount=64)    # are [-1, 1]
                 samples = (samples + 1.0) * 0.5    # now [0, 1]
                 samples = samples.clamp(0.0, 1.0)    # for good measure
 
@@ -293,9 +291,9 @@ class EDM():
                 print(f'-----------------------------------------------generated an 8x8 grid and saved it to:  {self.grid_path}')
 
             if (iteration + 1) % 50_000 == 0:
+                self.ema.eval()
 
-                ema.eval()
-                samples = self.sample(model=ema, amount=2_000)
+                samples = self.sample(model=self.ema, amount=2_000)
 
                 gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -314,7 +312,7 @@ class EDM():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
+                    uncompiled_model = getattr(self.ema.module, "_orig_mod", self.ema.module)
                     torch.save(uncompiled_model.state_dict(), self.score_save_path)
                     print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
@@ -323,13 +321,13 @@ class EDM():
         # ! Final Fid evaluation on 50_000 samples
 
         # Load the best model
-        model = self.get_model()
-        model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+        self.get_model()
+        self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
 
         eval_ds = self.data.get_dataset_for_full_eval()
 
         model.eval()
-        samples = self.sample(model=model, amount=50_000)
+        samples = self.sample(model=self.model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
