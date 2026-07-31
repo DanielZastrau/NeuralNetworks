@@ -10,9 +10,13 @@ from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
-class Diffusion():
+class DDPMppCont():
     """Implements the continuous ddpm model as described in 2021 - Song et al - Score based generative modeling through SDEs
-    The prediction target is given by Eq. (7) and we use the probability flow ODE for sampling with a final application of Tweedie's formula."""
+    The prediction target is given by Eq. (7) and we use the probability flow ODE for sampling with a final application of Tweedie's formula.
+    
+    Their reported 50k FID score:  ~3.25 with 2_000 steps,  and ~3.59 with 1_000 steps
+    Our achieved 50k FID score with 1_024 steps:    
+    Our minimum 2k FID score with 1_024 steps:    27.3"""
 
     def __init__(self):
 
@@ -41,6 +45,7 @@ class Diffusion():
             os.mkdir(self.grid_path)
 
         self.best_score = 10_000.0
+        self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
     def beta(self, t: torch.Tensor) -> torch.Tensor:
 
@@ -236,19 +241,22 @@ class Diffusion():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    score_save_path = os.path.join(self.base, 'best_score_model.pth')
-
                     uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
-                    torch.save(uncompiled_model.state_dict(), score_save_path)
-                    print(f"saved best score model to:  {score_save_path},    score {ema_score}")
+                    torch.save(uncompiled_model.state_dict(), self.score_save_path)
+                    print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
+    def eval(self):
                     
         # ! Final Fid evaluation on 50_000 samples
 
+        # Load the best model
+        model = self.get_model()
+        model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
         eval_ds = self.data.get_dataset_for_full_eval()
 
-        ema.eval()
-        samples = self.sample(model=ema, amount=50_000)
+        model.eval()
+        samples = self.sample(model=model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -266,5 +274,13 @@ class Diffusion():
 
 if __name__ == '__main__':
 
-    DDPM_pp_cont = Diffusion()
-    DDPM_pp_cont.train()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    args = parser.parse_args()
+
+    model = DDPMppCont()
+    if args.what == 'full' or args.what == 'train':
+        model.train()
+
+    if args.what == 'full' or args.what == 'eval':
+        model.eval()

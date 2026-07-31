@@ -19,6 +19,10 @@ class Diffusion():
         - Hybrid training objective
         - also learning the variance
         - larger model
+
+    Their reported 50k FID score:  ~3.19  
+    Our achieved 50k FID score:  
+    Our minimum 2k FID score:  27.4
     """
 
     def __init__(self):
@@ -136,8 +140,8 @@ class Diffusion():
 
         samples = []
 
-        for i in range((amount // 512) + 1):
-            how_many = min(512, amount - i * 512)
+        for j in range((amount // 512) + 1):
+            how_many = min(512, amount - j * 512)
 
             xT = torch.randn((how_many,
                               self.data.data_dims.channels,
@@ -185,7 +189,7 @@ class Diffusion():
                     xt = pred_mean + pred_sigma * z
 
             if amount == 50_000:
-                print(f'Sampled {i * 512 + how_many} / 50_000.')
+                print(f'Sampled {j * 512 + how_many} / 50_000.')
             samples.append(xt.cpu())
 
         return torch.cat(samples, dim=0)
@@ -320,9 +324,9 @@ if __name__ == '__main__':
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     args = parser.parse_args()
 
-    DDPM = Diffusion()
+    iDDPM = Diffusion()
     if args.what == 'full' or args.what == 'train':
-        DDPM.train()
+        iDDPM.train()
 
     if args.what == 'full' or args.what == 'eval':
-        DDPM.eval()
+        iDDPM.eval()
