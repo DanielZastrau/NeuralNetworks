@@ -108,7 +108,8 @@ class Diffusion():
         log_beta_t = self.log_betas[t].view(-1, *([1] * (x0.dim() - 1)))
 
         x_t = torch.sqrt(alpha_bar_t) * x0 + torch.sqrt(1.0 - alpha_bar_t) * noise
-        
+
+        # ! t needs to be between 0 and 1k 
         out = model(x_t, t.float())
         pred_noise, pred_v = out[:, :self.data.data_dims.channels], out[:, self.data.data_dims.channels:]
         

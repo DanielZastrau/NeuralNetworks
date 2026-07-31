@@ -446,7 +446,7 @@ class UNetModel(nn.Module):
         model_channels: int,
         out_channels: int,
         num_res_blocks: int,
-        attention_resolutions: tuple[int],
+        attention_resolutions,
         dropout:float=0,
         channel_mult = (1, 2, 4, 8),
         conv_resample: bool =True,

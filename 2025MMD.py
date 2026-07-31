@@ -8,12 +8,11 @@ import matplotlib.pyplot as plt
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
-from Cluster.utils.sample_kac import TorchKacConstantSampler
-from Cluster.utils.velo_utils import compute_velocity
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
-class Kac():
-    """2026 - Duong & Chemseddine - Telegraphers Generative Model via Kac Flows
+class MMD():
+    """The MMD Gradient flow toward a uniform distribution was talked about (introduced in?)
+    2026 - Chemseddine et al - Adapting Noise to Data
 
     Later I want to see if I can add some of the diffusion modulations
     """
@@ -26,24 +25,15 @@ class Kac():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
-        self.a = 25
-        self.c = 2
-
-        self.sampler = TorchKacConstantSampler(
-            a=self.a,
-            c=self.c,
-            T=1,
-            M=50_000,
-            K=4_096,
-        )
+        self.b = 3
 
         self.iterations = 400_000
         self.lr = 2e-4
         self.lr_warmup = int(self.iterations * 0.05)
         self.epsilon = 1e-5
-        self.S = 100    # amount of sampling steps
+        self.S = 1_024    # amount of sampling steps
 
-        self.base = '/work/zastrau/2026Duong'
+        self.base = '/work/zastrau/2025MMD'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
@@ -74,13 +64,24 @@ class Kac():
 
         return torch.ones_like(t, device=self.device)
 
+    def noise(self, t: torch.Tensor, x: torch.Tensor):
+
+        # [B, C, H, W]
+        # Sample uniform noise and normalize to [-1, 1]
+        pre_z = torch.rand_like(x, device=self.device, dtype=torch.float32) * 2 - 1
+
+        # [B, C, H, W]
+        factor = (1 - torch.exp(- t / torch.tensor(self.b))).view(-1, *([1] * (x.dim() - 1)))
+        z = self.b * factor * pre_z
+
+        return pre_z, z
+
     def get_model(self):
 
-        #! the network natively implements group normalization
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(1, 2, 2, 2),
-                         num_res_blocks=2, dropout=0.1,
-                         attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, ).to(self.device)
+                         num_res_blocks=3, attention_resolutions=(2, 4),
+                         dropout=0.1,).to(self.device)
 
     def get_ema(self):
 
@@ -109,36 +110,19 @@ class Kac():
         t = torch.rand((x0.shape[0],), device=self.device)
 
         # [B,]
-        ft = self.f(t=t)
-        dft = self.df(t=t)
-        gt = self.g(t=t)
-        dgt = self.dg(t=t)
-
-        # [B, C x H x W]
-        z = self.sampler.sample(gt, dim=self.data.data_dims.total_dimension).to(self.device)
+        ft = self.f(t=t).view(-1, *([1] * (x0.dim() - 1)))
+        dft = self.df(t=t).view(-1, *([1] * (x0.dim() - 1)))
+        gt = self.g(t=t).view(-1, *([1] * (x0.dim() - 1)))
+        dgt = self.dg(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
         # [B, C, H, W]
-        z = z.reshape(x0.shape)
-
-        # [B, C, H, W] = [B,] * [B, C, H, W] + [B, C, H, W]
-        xt = ft.view(-1, *([1] * (x0.dim() - 1))) * x0 + z
-
-        # [B, C, H, W] = [B,] * [B, C, H, W]
-        drift = dft.view(-1, *([1] * (x0.dim() - 1))) * x0
-        with torch.no_grad():
-            # [B, C, H, W],    retains the shape of z,    shape of x must match shape of t
-            velo = dgt.view(-1, *([1] * (x0.dim() - 1))) * compute_velocity(
-                x=z,
-                t=gt.view(-1, *([1] * (x0.dim() - 1))),
-                a=self.a,
-                c=torch.tensor(self.c),
-                epsilon=self.epsilon
-            )
+        pre_z, z = self.noise(t=t, x=x0)
 
         # [B, C, H, W]
+        xt = ft * x0 + z
+
         pred = model(xt, t * 1000)
-
-        target = velo + drift
+        target = dft * x0 + dgt * (pre_z / torch.exp(gt / self.b))
 
         return torch.nn.functional.mse_loss(pred, target)
 
@@ -150,26 +134,25 @@ class Kac():
             for j in range((amount // 512) + 1):
                 how_many = min(512, amount - j * 512)
 
-                # [B, C x H x W]
-                xT = self.sampler.sample(t = torch.ones((how_many,), device=self.device, dtype=torch.float32), dim=self.data.data_dims.total_dimension).to(self.device)
-
                 # [B, C, H, W]
-                xT = xT.reshape((
+                shape_tensor = torch.ones((
                     how_many,
                     self.data.data_dims.channels,
                     self.data.data_dims.height,
                     self.data.data_dims.width
-                ))
+                ), device=self.device)
+                _, xT = self.noise(t=torch.ones((how_many,), device=self.device, dtype=torch.float32), x=shape_tensor)
                 xt = xT
 
                 dt = (1 - self.epsilon) / self.S
                 time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
                 for t in time_steps:
 
+                    # [B,]
                     t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
-                    pred_v = model(xt, t_tensor * 1000)
+                    pred_v = model(xt, t_tensor * 1_000)
                     xt = xt - pred_v * dt
-
+        
                 if amount == 50_000:
                     print(f'sampled {j * 512 + how_many} / 50_000')
                 samples.append(xt.cpu())
@@ -306,7 +289,7 @@ if __name__ == '__main__':
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     args = parser.parse_args()
 
-    model = Kac()
+    model = MMD()
     if args.what == 'full' or args.what == 'train':
         model.train()
 
