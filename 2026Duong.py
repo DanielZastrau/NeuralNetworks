@@ -12,7 +12,7 @@ from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.velo_utils import compute_velocity
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
-class EDM():
+class Kac():
     """2026 - Duong & Chemseddine - Telegraphers Generative Model via Kac Flows
 
     Later I want to see if I can add some of the diffusion modulations
@@ -306,7 +306,7 @@ if __name__ == '__main__':
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     args = parser.parse_args()
 
-    model = EDM()
+    model = Kac()
     if args.what == 'full' or args.what == 'train':
         model.train()
 
