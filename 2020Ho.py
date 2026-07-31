@@ -132,7 +132,7 @@ class Diffusion():
                 with torch.no_grad():
                     pred = model(xt, t_tensor)
 
-                xt = prefactor * (xt - (numerator / denominator) * pred) + postsummand   
+                xt = prefactor * (xt - (numerator / denominator) * pred) + postsummand
 
             if amount == 50_000:
                 print(f'sampled {i * 512 + how_many} / 50_000')
