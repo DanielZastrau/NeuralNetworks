@@ -446,9 +446,9 @@ class UNetModel(nn.Module):
         model_channels: int,
         out_channels: int,
         num_res_blocks: int,
-        attention_resolutions,
+        attention_resolutions: tuple[int],
         dropout:float=0,
-        channel_mult=(1, 2, 4, 8),
+        channel_mult = (1, 2, 4, 8),
         conv_resample: bool =True,
         dims: int =2,
         num_classes=None,
@@ -643,7 +643,7 @@ class UNetModel(nn.Module):
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
 
-    def forward(self, x, timesteps, y=None):
+    def forward(self, x, timesteps = None, y=None, emb_override=None):
         """
         Apply the model to an input batch.
 
@@ -658,11 +658,14 @@ class UNetModel(nn.Module):
 
         hs = []
 
-        if self.use_rff:
-            t_emb = self.time_embed_proj(timesteps)
+        if emb_override is not None:
+            emb = emb_override
         else:
-            t_emb = timestep_embedding(timesteps, self.model_channels)
-        emb = self.time_embed(t_emb)
+            if self.use_rff:
+                t_emb = self.time_embed_proj(timesteps)
+            else:
+                t_emb = timestep_embedding(timesteps, self.model_channels)
+            emb = self.time_embed(t_emb)
 
         if self.num_classes is not None:
             assert y.shape == (x.shape[0],)
