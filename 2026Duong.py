@@ -43,9 +43,13 @@ class EDM():
         self.epsilon = 1e-5
         self.S = 100    # amount of sampling steps
 
-        self.base = '/work/zastrau/2026DuongSimple'
+        self.base = '/work/zastrau/2026Duong'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
+
+        self.curr_dir = os.path.join(self.base, 'simple')
+        if not os.path.exists(self.curr_dir):
+            os.mkdir(self.curr_dir)
 
         self.grid_path = os.path.join(self.base, 'grids')
         if not os.path.exists(self.grid_path):
