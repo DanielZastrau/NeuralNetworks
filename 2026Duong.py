@@ -129,7 +129,7 @@ class Kac():
             # [B, C, H, W],    retains the shape of z
             velo = dgt.view(-1, *([1] * (x0.dim() - 1))) * compute_velocity(
                 x=z,
-                t=gt,
+                t=gt.view(-1, *([1] * (x0.dim() - 1))),
                 a=self.a,
                 c=torch.tensor(self.c),
                 epsilon=self.epsilon
