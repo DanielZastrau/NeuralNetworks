@@ -39,7 +39,7 @@ class Diffusion():
             horizontal_flips = horizontal_flipping, horizontal_flips_p = 0.5,)
         )
 
-        self.base = '/work/zastrau/diffusionHo'
+        self.base = '/work/zastrau/2020Ho'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
