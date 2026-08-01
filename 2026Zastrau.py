@@ -26,11 +26,11 @@ class DSBFM():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
-        self.iterations = 400_000
-        self.lr = 2e-4
-        self.lr_warmup = int(self.iterations * 0.05)
-        self.epsilon = 1e-5
+        self.I = 400_000    # amount of training iterations
         self.S = 1_024    # amount of sampling steps
+        self.lr = 1e-4
+        self.lr_warmup = int(self.I * 0.05)
+        self.epsilon = 1e-5
 
         self.base = '/work/zastrau/2026Zastrau'
         if not os.path.exists(self.base):
@@ -57,9 +57,10 @@ class DSBFM():
 
     def get_model(self):
 
+        # ! Currently a smaller model to search some hyperparameters
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(1, 2, 2, 2),
-                         num_res_blocks=3, attention_resolutions=(2, 4),
+                         num_res_blocks=2, attention_resolutions=(2,),
                          dropout=0.1,).to(self.device)
 
     def get_ema(self):
@@ -69,19 +70,10 @@ class DSBFM():
     def get_optim(self):
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr) 
-        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=self.optim,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
                                                   start_factor=0.2,
                                                   end_factor=1.0,
-                                                  total_iters=self.lr_warmup),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=self.optim,
-                                                    factor=1.0,
-                                                    total_iters=1),
-            ],
-            milestones=[self.lr_warmup]
-        )
+                                                  total_iters=self.lr_warmup)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
@@ -146,7 +138,7 @@ class DSBFM():
         eval_dl = self.data.get_dataset_for_periodic_eval()
 
         train_iter = iter(train_dl)
-        for iteration in range(self.iterations):
+        for iteration in range(self.I):
             if iteration % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
 
