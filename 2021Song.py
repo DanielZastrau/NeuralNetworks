@@ -15,8 +15,10 @@ class DDPMppCont():
     The prediction target is given by Eq. (7) and we use the probability flow ODE for sampling with a final application of Tweedie's formula.
     
     Their reported 50k FID score:  ~3.25 with 2_000 steps,  and ~3.59 with 1_000 steps
-    Our achieved 50k FID score with 1_024 steps:    
-    Our minimum 2k FID score with 1_024 steps:    27.3"""
+    Our achieved 50k FID score with 1_024 steps:    4.02
+    Our minimum 2k FID score with 1_024 steps:    27.3
+    
+    This takes like 4 days to finish."""
 
     def __init__(self):
 

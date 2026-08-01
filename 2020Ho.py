@@ -14,12 +14,15 @@ class Diffusion():
     """2020 - Ho et al - Denoising Diffusion Probabilistic Models
     Their best Cifar-10 50k Fid was 3.17
     
-    no random horizontal flips and gradient clipping:
+    1) No random horizontal flips and gradient clipping:
         2k FID with T=1_000: 26.7
         50k FID with T=1_000: 3.7
-    random horizontal flips and no gradient clipping:
+    2) Random horizontal flips and no gradient clipping:
         2k FID with T=1_000:  26.3
         50k FID with T=1_000:  3.5
+
+    Looking at the training overviews (see the other repo) one notices the following:
+        1) leads to more degradation of FID values in the latter half, while 2) actually keeps improving over the entire training time.
     """
 
     def __init__(self, sigma_choice: str = 'simple', gradient_clipping: bool = False, horizontal_flipping: bool = True):

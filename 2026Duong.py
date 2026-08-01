@@ -14,7 +14,9 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
 class Kac():
     """2026 - Duong & Chemseddine - Telegraphers Generative Model via Kac Flows
-
+    No point in reimplementing the base model of 2026 - Han et al - DistillKac,
+            as it is only a deeper unet.
+    
     Later I want to see if I can add some of the diffusion modulations
     """
 
