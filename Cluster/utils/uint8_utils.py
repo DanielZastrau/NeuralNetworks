@@ -35,6 +35,8 @@ class Uint8Dataset(Dataset):
 
 
 def to_uint8_rgb(imgs: torch.Tensor, data: DataProvider) -> torch.Tensor:
+    """Expects [-1, 1] valued images"""
+
     imgs = (imgs + 1) * 0.5
     if imgs.shape[1] == 1:
         imgs = imgs.repeat(1, 3, 1, 1)

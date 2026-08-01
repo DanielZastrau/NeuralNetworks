@@ -15,7 +15,16 @@ class Diffusion():
 
     [30.07.26] - What they didn't mention in the paper is that they use horizontal flipping. I found that in their official implementation
     [30.07.26] - For some reason I had a final integration step after the sampling loop, which I now removed.
+    [01.08.26] - Worked through the official implementation. They first define a numerically stable log snr and then redefine everything on
+                    top of it.
 
+    This implements:
+        - x0 prediction with snr_trunc weighting and a { stable log snr schedule (adapted from their official repo) } with direct DDIM sampling
+        - v prediction in angular coordinates and angular DDIM sampling (see appendix D)
+
+    Their Fid scores:
+        - snr_trunc weighted x0-pred and 512 sampling steps     2.51
+        - unweighted v-prediction with 512 sampling steps     2.87
     """
 
     def __init__(self, prediction_target: str = 'v'):
@@ -28,6 +37,12 @@ class Diffusion():
             training_evaluation_period_fid_num_samples = 2_000,
             horizontal_flips = True, horizontal_flips_p = 0.5,)
         )
+
+        self.log_snr_min = -20
+        self.log_snr_max = 20
+
+        self.I = 800_000    # amount of training iterations
+        self.S = 512    # amount of sampling steps
 
         self.base = '/work/zastrau/Salimans'
         if not os.path.exists(self.base):
@@ -44,29 +59,43 @@ class Diffusion():
         self.best_score = 10_000.0
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
-    def alpha(self, t: torch.Tensor, x: torch.Tensor):
-        # ? See the trigonometric formulation in Appendix D
+    def stable_log_snr(self, t: torch.Tensor):
+        """Follows the true log snr on the itnerior, but is capped by the min max values at the boundaries"""
 
+        b = torch.arctan(torch.exp(torch.tensor(-0.5 * self.log_snr_max, device=self.device)))
+        a = torch.arctan(torch.exp(torch.tensor(-0.5 * self.log_snr_min, device=self.device))) - b
+
+        return - 2 * torch.log( torch.tan(a * t + b))
+
+    def stable_snr_trunc(self, t: torch.Tensor, x: torch.Tensor):
+        """See section 4. max(alpha_t^2 / sigma_t^2), 1"""
+
+        snr = torch.exp(self.stable_log_snr(t=t))
+        ones = torch.ones_like(t, device=self.device, dtype=torch.float32)
+
+        return torch.maximum(snr, ones).view(-1, *([1] * (x.dim() - 1)))
+
+    def alpha_snr(self, t: torch.Tensor, x: torch.Tensor):
+        """In appendix A they provide a reformulation of alpha in terms of the sigmoid function"""
+
+        lambda_t = self.stable_log_snr(t=t)
+        return torch.sqrt(torch.sigmoid(lambda_t)).view(-1, *([1] * (x.dim() - 1)))
+
+    def sigma_snr(self, t: torch.Tensor, x: torch.Tensor):
+        """This is not explicitely stated in the appendix, but follows from alpha"""
+
+        lambda_t = self.stable_log_snr(t=t)
+        return torch.sqrt(torch.sigmoid(- lambda_t)).view(-1, *([1] * (x.dim() - 1)))
+
+    def alpha_trigonometric(self, t: torch.Tensor, x: torch.Tensor):
+
+        # ? See the trigonometric formulation in Appendix D
         return torch.cos(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
 
-    def sigma(self, t: torch.Tensor, x: torch.Tensor):
+    def sigma_trigonometric(self, t: torch.Tensor, x: torch.Tensor):
+
         # ? See the trigonometric formulation in Appendix D
-
         return torch.sin(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
-
-    def snr(self, t: torch.Tensor, x: torch.Tensor):
-
-        # yields a tensor of shape [B, 1, 1, 1]
-        return (self.alpha(t, x)**2 / self.sigma(t, x)**2).to(self.device)
-
-    def snr_trunc(self, t: torch.Tensor, x: torch.Tensor):
-
-        return torch.clamp(self.snr(t, x), min=1.0).to(self.device)
-
-    def snr_pp(self, t: torch.Tensor, x: torch.Tensor):
-        """snr + 1"""
-
-        return (self.snr(t, x) + 1).to(self.device)
 
     def get_model(self):
 
@@ -82,30 +111,27 @@ class Diffusion():
     def get_optim(self, model: torch.nn.Module):
 
         optim = torch.optim.AdamW(model.parameters(), lr=3e-4, weight_decay=0.001) 
-        scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=optim,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=optim,
+        scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=optim,
                                                   start_factor=1e-8,
                                                   end_factor=1.0,
-                                                  total_iters=1_000),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=optim,
-                                                    factor=1.0,
-                                                    total_iters=1),
-            ],
-            milestones=[1_000]
-        )
+                                                  total_iters=1_000)
 
         return optim, scheduler
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
-        t = torch.rand((x0.shape[0],), device=self.device).clamp(min=1e-5)
+        t = torch.rand((x0.shape[0],), device=self.device)
         z = torch.randn_like(x0, device=self.device)
 
-        alpha_t = self.alpha(t, x0)
-        sigma_t = self.sigma(t, x0)
-        weight = self.snr_trunc(t, x0)
+        if self.prediction_target == 'x0':
+
+            alpha_t = self.alpha_snr(t=t, x=x0)
+            sigma_t = self.sigma_snr(t=t, x=x0)
+
+        else:    # self.prediction_target == 'v':
+
+            alpha_t = self.alpha_trigonometric(t, x0)
+            sigma_t = self.sigma_trigonometric(t, x0)
 
         xt = alpha_t * x0 + sigma_t * z
 
@@ -113,6 +139,7 @@ class Diffusion():
 
         if self.prediction_target == 'x0':
 
+            weight = self.stable_snr_trunc(t=t, x=x0)
             return (torch.nn.functional.mse_loss(pred, x0, reduction='none') * weight).mean()
 
         else:    # self.prediction_target == 'v'
@@ -123,13 +150,12 @@ class Diffusion():
 
     def sample(self, model: torch.nn.Module, amount: int):
 
-        T = 1_000
-        dt = 1 / T
+        dt = 1 / self.S
 
         samples = []
 
-        for i in range((amount // 512) + 1):
-            how_many = min(512, amount - i * 512)
+        for j in range((amount // 512) + 1):
+            how_many = min(512, amount - j * 512)
 
             xT = torch.randn((how_many,
                               self.data.data_dims.channels,
@@ -139,7 +165,7 @@ class Diffusion():
                               dtype=torch.float32)
 
             xt = xT
-            for i in range(0, T):
+            for i in range(0, self.S):
 
                 t = torch.full((xt.shape[0],), 1 - i * dt, dtype=torch.float32, device=self.device)
                 
@@ -147,29 +173,28 @@ class Diffusion():
                     pred = model(xt, t * 1_000)
 
                 if self.prediction_target == 'x0':
-                    alpha_s = self.alpha(t - dt, xt)
-                    alpha_t = self.alpha(t, xt)
+                    alpha_s = self.alpha_snr(t - dt, xt)
+                    alpha_t = self.alpha_snr(t, xt)
 
-                    sigma_s = self.sigma(t - dt, xt)
-                    sigma_t = self.sigma(t, xt)
+                    sigma_s = self.sigma_snr(t - dt, xt)
+                    sigma_t = self.sigma_snr(t, xt)
 
                     # we are working with tensors in the range [-1, 1]
                     x0_pred = pred.clamp(min=-1.0, max=1.0)
 
-                    # ? Keep in mind that sigma_t = sin(0.5 * pi * t), for t to zero, this causes a division by increasingly small values
-                    # ? But, since sampling is done in discrete time, this is still stable. 
+                    # ? Because we reformulated sigma in terms of a numerically stable snr schedule, this division is stable.
                     xt = alpha_s * x0_pred + sigma_s * ( (xt - alpha_t * x0_pred) / sigma_t)
 
                 else:    # self.prediction_target == 'v':
-                    # ? angular update, see appendix d, more stable as it is division free
 
-                    phi_dt = 0.5 * torch.pi * dt
-                    xt = torch.cos(torch.tensor(phi_dt)) * xt - torch.sin(torch.tensor(phi_dt)) * pred
+                    # ? angular update, see appendix d, more stable as it is division free
+                    phi_dt = torch.tensor(0.5 * torch.pi * dt, device=self.device, dtype=torch.float32)
+                    xt = torch.cos(phi_dt) * xt - torch.sin(phi_dt) * pred
 
             xt = xt.clamp(min=-1.0, max=1.0)
             samples.append(xt.cpu())
             if amount == 50_000:
-                print(f'sampled {i * 512 + how_many} / 50_000')
+                print(f'sampled {j * 512 + how_many} / 50_000')
 
         return torch.cat(samples, dim=0)
 
@@ -183,7 +208,7 @@ class Diffusion():
         eval_dl = self.data.get_dataset_for_periodic_eval()
 
         train_iter = iter(train_dl)
-        for iteration in range(800_000):
+        for iteration in range(self.I):
             if (iteration + 1) % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
                 
