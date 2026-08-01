@@ -21,7 +21,7 @@ class Diffusion():
         - larger model
 
     Their reported 50k FID score:  ~3.19  
-    Our achieved 50k FID score:  
+    Our achieved 50k FID score:  3.9
     Our minimum 2k FID score:  27.4
     """
 

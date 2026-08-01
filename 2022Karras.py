@@ -19,12 +19,15 @@ class EDM():
         - This implements the Karras schedule.
         - This implements the parameterization of the network in terms of the functions "c...".
         - This implements the geometric transformations.
+        - The zero output layer is natively implemented by the UNet
 
     Differences to their work:
         - I am not training with a batch size of 512, because I have found that to cause an OOM error.
                 I am training with a batch size of 128 instead to stay consistenc with everything else.
         - Consequently their 400k iterations would become 1.6m iterations.
                 I cap them at 1m iterations, because I have found no benefits in the later stages of training.
+        - Because we train with a smaller batch size, we also have to adjust their learning rate by the same factor of 4.
+                Down from 1e-3 to 2.5e-4
 
     """
 
@@ -52,6 +55,7 @@ class EDM():
         self.time_factor = 1_000 / self.sigma_max
 
         self.iterations = 1_000_000
+        self.lr = 2.5e-4
         self.lr_warmup = int(self.iterations * 0.05)
 
         self.model_channels = 128
@@ -103,13 +107,15 @@ class EDM():
         cout = self.c_out(sigma=sigma_bc)
         cnoise = self.c_noise(sigma=sigma).flatten()
 
+        active_model = getattr(model, "module", model)
+
         t_emb = timestep_embedding(cnoise * self.time_factor, self.model_channels)
-        emb = self.model.time_embed(t_emb)
+        emb = active_model.time_embed(t_emb)
 
         if aug_cond is None:
             aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
 
-        emb = emb + self.model.aug_proj(aug_cond)
+        emb = emb + active_model.aug_proj(aug_cond)
 
         pred = model(cin * x, timesteps = None, emb_override=emb)
 
@@ -142,20 +148,11 @@ class EDM():
 
     def get_optim(self):
 
-        self.optim = torch.optim.Adam(self.model.parameters(), lr=1e-3) 
-        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=self.optim,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
-                                                  start_factor=0.2,
-                                                  end_factor=1.0,
-                                                  total_iters=self.lr_warmup),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=self.optim,
-                                                    factor=1.0,
-                                                    total_iters=1),
-            ],
-            milestones=[self.lr_warmup]
-        )
+        self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
+                                            start_factor=0.2,
+                                            end_factor=1.0,
+                                            total_iters=self.lr_warmup)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
