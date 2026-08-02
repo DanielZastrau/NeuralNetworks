@@ -41,10 +41,12 @@ class Kac():
     - Han et als model settings    -    Base model 3
     """
 
-    def __init__(self, schedule: str = 'uniform', integrator: str = 'euler'):
+    def __init__(self, which: str = 'simple', schedule: str = 'uniform', integrator: str = 'euler'):
 
         assert schedule in ['uniform', 'karras']
         assert integrator in ['euler', 'heun']
+
+        self.which = which
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -90,7 +92,7 @@ class Kac():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, 'model2')
+        self.curr_dir = os.path.join(self.base, which)
         if not os.path.exists(self.curr_dir):
             os.mkdir(self.curr_dir)
 
@@ -155,7 +157,8 @@ class Kac():
                          num_res_blocks=2, dropout=0.1,
                          attention_resolutions=(2,), num_heads=4, use_new_attention_order=True,).to(self.device)
 
-        self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
+        if self.which == 'model2':
+            self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
 
     def get_ema(self):
 
@@ -164,23 +167,17 @@ class Kac():
     def get_optim(self):
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr) 
-        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=self.optim,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
                                                   start_factor=0.2,
                                                   end_factor=1.0,
-                                                  total_iters=self.lr_warmup),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=self.optim,
-                                                    factor=1.0,
-                                                    total_iters=1),
-            ],
-            milestones=[self.lr_warmup]
-        )
+                                                  total_iters=self.lr_warmup)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
-        x0_aug, aug_cond = self.augmentation_pipeline(x0)
+        if self.which == 'simple':
+            x0_aug, aug_cond = x0, None
+        else:    # self.which == 'model2':
+            x0_aug, aug_cond = self.augmentation_pipeline(x0)
 
         # [B,]
         t = torch.rand((x0.shape[0],), device=self.device)
@@ -426,11 +423,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--which', type=str, default='simple', choices=['simple', 'model2'])
     parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
     parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun'])
     args = parser.parse_args()
 
-    model = Kac(schedule=args.schedule, integrator=args.integrator)
+    model = Kac(which=args.which, schedule=args.schedule, integrator=args.integrator)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
