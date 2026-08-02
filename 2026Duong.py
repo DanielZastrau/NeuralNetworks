@@ -72,7 +72,11 @@ class Kac():
 
         self.schedule = schedule
         self.integrator = integrator
-        self.S = 50    # amount of sampling steps
+
+        if self.integrator == 'euler':
+            self.S = 100    # amount of sampling steps
+        else:    # self.integrator == 'heun'
+            self.S = 50
 
         self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
 
