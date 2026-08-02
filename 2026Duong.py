@@ -75,7 +75,7 @@ class Kac():
 
         if self.integrator == 'euler':
             self.S = 100    # amount of sampling steps
-        else:    # self.integrator == 'heun'
+        else:    # self.integrator == 'karras'
             self.S = 50
 
         self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
@@ -242,17 +242,21 @@ class Kac():
 
                         ti = time_steps[i]
                         tip = time_steps[i + 1]
+
+                        ti_tensor = torch.full((xT.shape[0],), ti, device=self.device, dtype=torch.float32)
+                        tip_tensor = torch.full((xT.shape[0],), tip, device=self.device, dtype=torch.float32)
+
                         dt = tip - ti
 
                         # ? Evaluate velocity at ti (which is equivalent to evaluating the pfode at ti)
-                        pred_v_i = model(xt, ti * 1000)
+                        pred_v_i = model(xt, ti_tensor * 1000)
 
                         # ? Euler step
                         x_intermediate = xt + dt * pred_v_i
 
                         # ? Second order correction
                         if tip != 0:
-                            pred_v_ip = model(x_intermediate, tip * 1000)
+                            pred_v_ip = model(x_intermediate, tip_tensor * 1000)
                             xt = xt + dt * (0.5 * pred_v_i + 0.5 * pred_v_ip)
 
                         else:
