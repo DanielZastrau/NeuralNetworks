@@ -23,28 +23,33 @@ class Kac():
 
     Their best 50k FID with S=100:    6.42
 
-    Base model 1 + Euler integrator (S=50) + uniform schedule
+    Base model 1 + Euler integrator + uniform schedule
         50k FID with S=100:    4.8
         Best 2k FID with S=100:    28.4
 
-    Base model 1 + Euler integrator (S=50) + Karras schedule
+    Base model 1 + Euler integrator + Karras schedule
         50k FID with S=100:    7.1732
 
-    Base model 1 + Karras integrator (S=50) + karras schedule
-        Best 50k FID with S=50:    10.8887
+    Base model 1 + Heun integrator + uniform schedule
+        50k FID with S=50:    9.1535
 
-    Thoughs:
-        - Karras schedule and integrator seem to yield worse results
-                That could be due to this script implementing a VP Kac process, while Karras implemented a VE Diffusion process.
+    Base model 1 + Heun integrator + Karras schedule
+        50k FID with S=50:    10.8887
+
+    Thoughts:
+        - Karras schedule seem to yield worse results
+        - Heun integrator also seems to yield worse results
 
     - Data augmentation    -    Base model 2
     - Han et als model settings    -    Base model 3
+
+    I mistakenly trained my models with time truncation 1e-5, but that difference is marginal, so I am gonna leave it in there.
     """
 
-    def __init__(self, which: str = 'simple', schedule: str = 'uniform', integrator: str = 'euler'):
+    def __init__(self, which: str = 'simple', schedule: str = 'uniform', integrator: str = 'euler', S: int = 100):
 
         assert schedule in ['uniform', 'karras']
-        assert integrator in ['euler', 'heun']
+        assert integrator in ['euler', 'heun', 'midpoint', 'ab2']
 
         self.which = which
 
@@ -81,10 +86,7 @@ class Kac():
 
         self.model_channels = 128
 
-        if self.integrator == 'euler':
-            self.S = 100    # amount of sampling steps
-        else:    # self.integrator == 'heun'
-            self.S = 50
+        self.S = S
 
         self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
 
@@ -291,6 +293,58 @@ class Kac():
                         else:
                             xt = x_intermediate
 
+                elif self.integrator == 'midpoint':
+
+                    if self.schedule == 'uniform':
+                        time_steps = torch.linspace(1, self.epsilon, self.S + 1, device=self.device, dtype=torch.float32)
+                    else:
+                        raise NotImplementedError("Midpoint only implemented for uniform schedule.")
+
+                    for i in range(len(time_steps) - 1):
+
+                        ti = time_steps[i]
+                        tip = time_steps[i + 1]
+                        dt_step = tip - ti
+
+                        # Evaluate velocity at ti
+                        pred_v_i = self.model_fn(model=model, t=ti, x=xt, aug_cond=None)
+                        
+                        # Compute the midpoint state
+                        t_mid = ti + dt_step / 2
+                        x_mid = xt + (dt_step / 2) * pred_v_i
+                        
+                        # Evaluate velocity at the midpoint
+                        pred_v_mid = self.model_fn(model=model, t=t_mid, x=x_mid, aug_cond=None)
+                        
+                        # Take the full step using the midpoint velocity
+                        xt = xt + dt_step * pred_v_mid
+
+                elif self.integrator == 'ab2':
+                    # Only implement for uniform as requested
+                    if self.schedule == 'uniform':
+                        time_steps = torch.linspace(1, self.epsilon, self.S + 1, device=self.device, dtype=torch.float32)
+                    else:
+                        raise NotImplementedError("AB2 only implemented for uniform schedule.")
+
+                    pred_v_prev = None
+                    for i in range(len(time_steps) - 1):
+                        ti = time_steps[i]
+                        tip = time_steps[i + 1]
+                        dt_step = tip - ti
+
+                        # Evaluate velocity at ti
+                        pred_v_i = self.model_fn(model=model, t=ti, x=xt, aug_cond=None)
+                        
+                        if i == 0:
+                            # AB2 requires a history of 1 step; use standard Euler for the initial step
+                            xt = xt + dt_step * pred_v_i
+                        else:
+                            # Adams-Bashforth 2 explicit step
+                            xt = xt + dt_step * (1.5 * pred_v_i - 0.5 * pred_v_prev)
+                            
+                        # Store current velocity for the next step's history 
+                        pred_v_prev = pred_v_i
+
                 if amount == 50_000:
                     print(f'sampled {j * 512 + how_many} / 50_000')
                 samples.append(xt.cpu())
@@ -427,10 +481,11 @@ if __name__ == '__main__':
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     parser.add_argument('--which', type=str, default='simple', choices=['simple', 'model2'])
     parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
-    parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun'])
+    parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun', 'midpoint', 'ab2'])
+    parser.add_argument('--S', type=int, default=100)
     args = parser.parse_args()
 
-    model = Kac(which=args.which, schedule=args.schedule, integrator=args.integrator)
+    model = Kac(which=args.which, schedule=args.schedule, integrator=args.integrator, S=args.S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
