@@ -131,11 +131,11 @@ class Kac():
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
 
         if isinstance(t, float):
-            t_tensor = torch.full((x.shape[0],), t, dtype=torch.float32, device=self.device)
+            t = torch.full((x.shape[0],), t, dtype=torch.float32, device=self.device)
 
         active_model = getattr(model, "module", model)
 
-        t_emb = timestep_embedding(t_tensor * 1_000, self.model_channels)
+        t_emb = timestep_embedding(t * 1_000, self.model_channels)
         emb = active_model.time_embed(t_emb)
 
         if aug_cond is None:
