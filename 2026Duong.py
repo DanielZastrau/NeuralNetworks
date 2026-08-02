@@ -23,14 +23,14 @@ class Kac():
 
     Their best 50k FID with S=100:    6.42
 
-    Our model + Euler integrator (S=50) + uniform schedule
+    Base model 1 + Euler integrator (S=50) + uniform schedule
         50k FID with S=100:    4.8
         Best 2k FID with S=100:    28.4
 
-    Our model + Euler integrator (S=50) + Karras schedule
+    Base model 1 + Euler integrator (S=50) + Karras schedule
         50k FID with S=100:    7.1732
 
-    Our model + Karras integrator (S=50) + karras schedule
+    Base model 1 + Karras integrator (S=50) + karras schedule
         Best 50k FID with S=50:    10.8887
 
     Thoughs:
@@ -92,16 +92,16 @@ class Kac():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, 'simple')
+        self.curr_dir = os.path.join(self.base, 'model2')
         if not os.path.exists(self.curr_dir):
             os.mkdir(self.curr_dir)
 
-        self.grid_path = os.path.join(self.base, 'grids')
+        self.grid_path = os.path.join(self.curr_dir, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
 
         self.best_score = 10_000.0
-        self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
+        self.score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
 
     def f(self, t: torch.Tensor):
 
