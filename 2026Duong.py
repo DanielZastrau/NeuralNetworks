@@ -155,7 +155,7 @@ class Kac():
                          num_res_blocks=2, dropout=0.1,
                          attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, )
 
-        self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4).to(self.device)
+        self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
 
     def get_ema(self):
 
