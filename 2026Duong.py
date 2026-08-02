@@ -23,14 +23,14 @@ class Kac():
 
     Their best 50k FID with S=100:    6.42
 
-    Our model + Euler stepping + uniform schedule
+    Our model + Euler integrator (S=50) + uniform schedule
         50k FID with S=100:    4.8
         Best 2k FID with S=100:    28.4
 
-    Our model + Euler stepping + Karras schedule
+    Our model + Euler integrator (S=50) + Karras schedule
         50k FID with S=100:    7.1732
 
-    Our model + Karras sampler + karras schedule
+    Our model + Karras integrator (S=50) + karras schedule
         Best 50k FID with S=50:    10.8887
 
     Thoughs:
@@ -151,11 +151,11 @@ class Kac():
 
         #! The corrected network config of Duong et al
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                         model_channels=128, channel_mult=(1, 2, 2, 2),
+                         model_channels=self.model_channels, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, dropout=0.1,
-                         attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, ).to(self.device)
+                         attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, )
 
-        self.model.aug_proj = torch.nn.Linear(9, model.model_channels * 4)
+        self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4).to(self.device)
 
     def get_ema(self):
 
