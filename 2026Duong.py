@@ -21,9 +21,11 @@ class Kac():
 
     Their best 50k FID with S=100:    6.42
 
-    Our model + Euler stepping
+    Our model + Euler stepping + uniform time steps
         Best 50k FID with S=100:    4.8
         Best 2k FID with S=100:    28.4
+
+    Our model + Euler stepping + Karras schedule
 
     - Han et als settings
     - Karras schedule
@@ -51,10 +53,16 @@ class Kac():
         )
 
         self.iterations = 400_000
+
         self.lr = 2e-4
         self.lr_warmup = int(self.iterations * 0.05)
-        self.epsilon = 1e-5
+
+        self.epsilon = 1e-5    # time truncation
+        self.T = 1    # max time
+
         self.S = 100    # amount of sampling steps
+
+        self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
 
         self.base = '/work/zastrau/2026Duong'
         if not os.path.exists(self.base):
@@ -86,6 +94,15 @@ class Kac():
     def dg(self, t: torch.Tensor):
 
         return torch.ones_like(t, device=self.device)
+
+    def get_karras_schedule(self) -> list[float]:
+
+        t_values = [
+            (self.T**(1/self.karras_p) + (i / (self.S - 1)) * (self.epsilon**(1/self.karras_p) - self.T**(1/self.karras_p)))**self.karras_p 
+            for i in (range(self.S))
+        ] + [0.0]
+
+        return t_values
 
     def get_model(self):
 
@@ -176,7 +193,8 @@ class Kac():
                 xt = xT
 
                 dt = (1 - self.epsilon) / self.S
-                time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
+                # time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
+                time_steps = self.get_karras_schedule()
                 for t in time_steps:
 
                     t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)

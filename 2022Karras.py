@@ -50,13 +50,13 @@ class EDM():
         self.P_mean = -1.2
         self.P_std = 1.2
 
+        self.I = 1_000_000    # number of training iterations
         self.S = 50    # number of sampling steps
 
         self.time_factor = 1_000 / self.sigma_max
 
-        self.iterations = 1_000_000
-        self.lr = 2.5e-4
-        self.lr_warmup = int(self.iterations * 0.05)
+        self.lr = 2.5e-4    # originally 1e-3 but since we train with a quarter of the batch size, the lr has to adjust as well
+        self.lr_warmup = int(self.I * 0.05)
 
         self.model_channels = 128
 
@@ -226,7 +226,7 @@ class EDM():
         eval_dl = self.data.get_dataset_for_periodic_eval()
 
         train_iter = iter(train_dl)
-        for iteration in range(self.iterations):
+        for iteration in range(self.I):
             if iteration % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
 
