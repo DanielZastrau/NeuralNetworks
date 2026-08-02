@@ -135,19 +135,21 @@ class Kac():
         elif t.shape[0] != x.shape[0]:
             t = t.expand((x.shape[0], ))
 
-        active_model = getattr(model, "module", model)
+        if self.which == 'simple':
+            return model(x, t * 1_000)
 
-        t_emb = timestep_embedding(t * 1_000, self.model_channels)
-        emb = active_model.time_embed(t_emb)
+        else:    # self.which == 'model2':
+            active_model = getattr(model, "module", model)
 
-        if aug_cond is None:
-            aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
+            t_emb = timestep_embedding(t * 1_000, self.model_channels)
+            emb = active_model.time_embed(t_emb)
 
-        emb = emb + active_model.aug_proj(aug_cond)
+            if aug_cond is None:
+                aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
 
-        pred = model(x, timesteps = None, emb_override=emb)
+            emb = emb + active_model.aug_proj(aug_cond)
 
-        return pred
+            return model(x, timesteps = None, emb_override=emb)
 
     def get_model(self):
 
