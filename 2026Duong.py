@@ -153,7 +153,7 @@ class Kac():
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=self.model_channels, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, dropout=0.1,
-                         attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, )
+                         attention_resolutions=(2,), num_heads=4, use_new_attention_order=True,).to(self.device)
 
         self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
 
