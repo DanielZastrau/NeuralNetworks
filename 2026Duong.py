@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
+from Cluster.utils.dataAugmentation import KarrasAugmentationPipeline
+from Cluster.utils.nn_utils import timestep_embedding
 from Cluster.utils.sample_kac import TorchKacConstantSampler
 from Cluster.utils.velo_utils import compute_velocity
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
@@ -21,18 +23,20 @@ class Kac():
 
     Their best 50k FID with S=100:    6.42
 
-    Our model + Euler stepping + uniform time steps
-        Best 50k FID with S=100:    4.8
+    Our model + Euler stepping + uniform schedule
+        50k FID with S=100:    4.8
         Best 2k FID with S=100:    28.4
 
     Our model + Euler stepping + Karras schedule
-        Best 50k FID with S=100:    299.3 ???
+        50k FID with S=100:    7.1732
 
-    Our model + Karras sampler + uniform steps
-        Best 50k FID with S=50:
+    Our model + Karras sampler + karras schedule
+        Best 50k FID with S=50:    10.8887
 
-    - Karras schedule    -    Base model 1 just different sampling
-    - Karras Heun    -    Base model 1 just different sampling
+    Thoughs:
+        - Karras schedule and integrator seem to yield worse results
+                That could be due to this script implementing a VP Kac process, while Karras implemented a VE Diffusion process.
+
     - Data augmentation    -    Base model 2
     - Han et als model settings    -    Base model 3
     """
@@ -62,6 +66,8 @@ class Kac():
             K=4_096,
         )
 
+        self.augmentation_pipeline = KarrasAugmentationPipeline()
+
         self.iterations = 400_000
 
         self.lr = 2e-4
@@ -72,6 +78,8 @@ class Kac():
 
         self.schedule = schedule
         self.integrator = integrator
+
+        self.model_channels = 128
 
         if self.integrator == 'euler':
             self.S = 100    # amount of sampling steps
@@ -120,6 +128,25 @@ class Kac():
 
         return t_values
 
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+
+        if isinstance(t, float):
+            t_tensor = torch.full((x.shape[0],), t, dtype=torch.float32, device=self.device)
+
+        active_model = getattr(model, "module", model)
+
+        t_emb = timestep_embedding(t_tensor * 1_000, self.model_channels)
+        emb = active_model.time_embed(t_emb)
+
+        if aug_cond is None:
+            aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
+
+        emb = emb + active_model.aug_proj(aug_cond)
+
+        pred = model(x, timesteps = None, emb_override=emb)
+
+        return pred
+
     def get_model(self):
 
         #! The corrected network config of Duong et al
@@ -127,6 +154,8 @@ class Kac():
                          model_channels=128, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, dropout=0.1,
                          attention_resolutions=(2,), num_heads=4, use_new_attention_order=True, ).to(self.device)
+
+        self.model.aug_proj = torch.nn.Linear(9, model.model_channels * 4)
 
     def get_ema(self):
 
@@ -151,6 +180,8 @@ class Kac():
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
+        x0_aug, aug_cond = self.augmentation_pipeline(x0)
+
         # [B,]
         t = torch.rand((x0.shape[0],), device=self.device)
 
@@ -167,10 +198,10 @@ class Kac():
         z = z.reshape(x0.shape)
 
         # [B, C, H, W] = [B,] * [B, C, H, W] + [B, C, H, W]
-        xt = ft.view(-1, *([1] * (x0.dim() - 1))) * x0 + z
+        xt = ft.view(-1, *([1] * (x0.dim() - 1))) * x0_aug + z
 
         # [B, C, H, W] = [B,] * [B, C, H, W]
-        drift = dft.view(-1, *([1] * (x0.dim() - 1))) * x0
+        drift = dft.view(-1, *([1] * (x0.dim() - 1))) * x0_aug
         with torch.no_grad():
             # [B, C, H, W],    retains the shape of z,    shape of x must match shape of t
             velo = dgt.view(-1, *([1] * (x0.dim() - 1))) * compute_velocity(
@@ -182,7 +213,7 @@ class Kac():
             )
 
         # [B, C, H, W]
-        pred = model(xt, t * 1000)
+        pred = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
 
         target = velo + drift
 
@@ -230,8 +261,7 @@ class Kac():
                         else:
                             dt = t - self.epsilon
 
-                        t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
-                        pred_v = model(xt, t_tensor * 1000)
+                        pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
                         xt = xt - pred_v * dt
 
                 elif self.integrator == 'karras':
@@ -243,20 +273,17 @@ class Kac():
                         ti = time_steps[i]
                         tip = time_steps[i + 1]
 
-                        ti_tensor = torch.full((xT.shape[0],), ti, device=self.device, dtype=torch.float32)
-                        tip_tensor = torch.full((xT.shape[0],), tip, device=self.device, dtype=torch.float32)
-
                         dt = tip - ti
 
                         # ? Evaluate velocity at ti (which is equivalent to evaluating the pfode at ti)
-                        pred_v_i = model(xt, ti_tensor * 1000)
+                        pred_v_i = self.model_fn(model=model, t=ti, x=xt, aug_cond=None)
 
                         # ? Euler step
                         x_intermediate = xt + dt * pred_v_i
 
                         # ? Second order correction
                         if tip != 0:
-                            pred_v_ip = model(x_intermediate, tip_tensor * 1000)
+                            pred_v_ip = self.model_fn(model=model, t=tip, x=x_intermediate, aug_cond=None)
                             xt = xt + dt * (0.5 * pred_v_i + 0.5 * pred_v_ip)
 
                         else:

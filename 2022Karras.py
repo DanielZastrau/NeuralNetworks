@@ -162,9 +162,9 @@ class EDM():
         sigma_bc = sigma.view(-1, *([1] * (x0.dim() - 1)))
 
         z = torch.randn_like(x0, device=self.device) * sigma_bc
-        noisy_x0 = x0_aug + z
+        xt = x0_aug + z
 
-        pred = self.D_fn(model=model, x=noisy_x0, sigma=sigma, aug_cond=aug_cond)
+        pred = self.D_fn(model=model, x=xt, sigma=sigma, aug_cond=aug_cond)
         weight = self.weight(sigma_bc)
 
         return (weight * torch.nn.functional.mse_loss(pred, x0_aug, reduction='none')).mean()
