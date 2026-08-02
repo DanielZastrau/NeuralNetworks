@@ -16,12 +16,14 @@ class MMD():
 
     Later I want to see if I can add some of the diffusion modulations
 
+    With the smaller model:
+    
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
-        Min 50k FID with S=1_024:    
+        Min 50k FID with S=1_024:    5.4
     """
 
-    def __init__(self):
+    def __init__(self, model_size: str = 'small'):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -29,11 +31,13 @@ class MMD():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
+        self.model_size = model_size
+
         self.b = 3
 
-        self.iterations = 400_000
+        self.I = 400_000
         self.lr = 2e-4
-        self.lr_warmup = int(self.iterations * 0.05)
+        self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
         self.S = 1_024    # amount of sampling steps
 
@@ -41,7 +45,7 @@ class MMD():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, 'simple')
+        self.curr_dir = os.path.join(self.base, 'small')
         if not os.path.exists(self.curr_dir):
             os.mkdir(self.curr_dir)
 
@@ -82,10 +86,17 @@ class MMD():
 
     def get_model(self):
 
-        self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                         model_channels=128, channel_mult=(1, 2, 2, 2),
-                         num_res_blocks=3, attention_resolutions=(2, 4),
-                         dropout=0.1,).to(self.device)
+        if self.model_size == 'small':
+            self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
+                            model_channels=128, channel_mult=(1, 2, 2, 2),
+                            num_res_blocks=2, attention_resolutions=(2),
+                            dropout=0.1,).to(self.device)
+
+        elif self.model_size == 'medium':
+            self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
+                            model_channels=128, channel_mult=(1, 2, 2, 2),
+                            num_res_blocks=3, attention_resolutions=(2, 4),
+                            dropout=0.1,).to(self.device)
 
     def get_ema(self):
 
@@ -94,19 +105,10 @@ class MMD():
     def get_optim(self):
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr) 
-        self.scheduler = torch.optim.lr_scheduler.SequentialLR(
-            optimizer=self.optim,
-            schedulers=[
-                torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(optimizer=self.optim,
                                                   start_factor=0.2,
                                                   end_factor=1.0,
-                                                  total_iters=self.lr_warmup),
-                torch.optim.lr_scheduler.ConstantLR(optimizer=self.optim,
-                                                    factor=1.0,
-                                                    total_iters=1),
-            ],
-            milestones=[self.lr_warmup]
-        )
+                                                  total_iters=self.lr_warmup)
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
@@ -173,7 +175,7 @@ class MMD():
         eval_dl = self.data.get_dataset_for_periodic_eval()
 
         train_iter = iter(train_dl)
-        for iteration in range(self.iterations):
+        for iteration in range(self.I):
             if iteration % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
 
@@ -291,9 +293,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--model-size', type=str, default='small', choices=['small', 'medium'])
     args = parser.parse_args()
 
-    model = MMD()
+    model = MMD(model_size = args.model_size)
     if args.what == 'full' or args.what == 'train':
         model.train()
 

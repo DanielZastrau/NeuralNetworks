@@ -68,10 +68,10 @@ class Kac():
 
         self.augmentation_pipeline = KarrasAugmentationPipeline()
 
-        self.iterations = 400_000
+        self.I = 400_000
 
         self.lr = 2e-4
-        self.lr_warmup = int(self.iterations * 0.05)
+        self.lr_warmup = int(self.I * 0.05)
 
         self.epsilon = 1e-5    # time truncation
         self.T = 1    # max time
@@ -305,7 +305,7 @@ class Kac():
         eval_dl = self.data.get_dataset_for_periodic_eval()
 
         train_iter = iter(train_dl)
-        for iteration in range(self.iterations):
+        for iteration in range(self.I):
             if iteration % 1_000 == 0:
                 print(f'----------    iteration    {iteration}    ----------')
 
