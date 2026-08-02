@@ -128,8 +128,10 @@ class Kac():
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
 
-        if isinstance(t, torch.FloatTensor):
-            t = t.expand((x.shape[0],))
+        if not isinstance(t, torch.Tensor) or t.dim() == 0:
+            t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
+        elif t.shape[0] != x.shape[0]:
+            t = t.expand((x.shape[0], ))
 
         active_model = getattr(model, "module", model)
 
