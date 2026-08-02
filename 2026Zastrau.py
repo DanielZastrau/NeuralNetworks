@@ -15,6 +15,7 @@ class DSBFM():
 
     [01.08.26] - Run: zastrau - Reduced LR to 1e-4
             Min 2k FID at 400k iterations:    ~54
+            With the reduced learning rate the Fid score trajectory also looks better, and is more stably trending downward
     [01.08.26] - Run: zastrau2 - Added weighting
             Min 2k FID at 400k iterations:    ~55
     [02.08.26] - Run: zastrau3 - Added gradient clipping
