@@ -44,9 +44,7 @@ class Kac():
     def __init__(self, schedule: str = 'uniform', integrator: str = 'euler'):
 
         assert schedule in ['uniform', 'karras']
-        assert integrator in ['euler', 'karras']
-
-        if integrator == 'karras': assert schedule == 'karras'
+        assert integrator in ['euler', 'heun']
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -83,7 +81,7 @@ class Kac():
 
         if self.integrator == 'euler':
             self.S = 100    # amount of sampling steps
-        else:    # self.integrator == 'karras'
+        else:    # self.integrator == 'heun'
             self.S = 50
 
         self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
@@ -264,9 +262,14 @@ class Kac():
                         pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
                         xt = xt - pred_v * dt
 
-                elif self.integrator == 'karras':
+                elif self.integrator == 'heun':
 
-                    time_steps = self.get_karras_schedule(self.S)
+                    if self.schedule == 'uniform':
+                        dt = (1 - self.epsilon) / self.S
+                        time_steps = torch.linspace(1, self.epsilon, self.S + 1, device=self.device, dtype=torch.float32)
+
+                    else:    # self.schedule == 'karras'
+                        time_steps = torch.tensor(self.get_karras_schedule(self.S))
 
                     for i in range(len(time_steps) - 1):
 
@@ -275,10 +278,8 @@ class Kac():
 
                         dt = tip - ti
 
-                        # ? Evaluate velocity at ti (which is equivalent to evaluating the pfode at ti)
+                        # ? Evaluate velocity at ti and take a euler step
                         pred_v_i = self.model_fn(model=model, t=ti, x=xt, aug_cond=None)
-
-                        # ? Euler step
                         x_intermediate = xt + dt * pred_v_i
 
                         # ? Second order correction
@@ -424,7 +425,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
-    parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'karras'])
+    parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun'])
     args = parser.parse_args()
 
     model = Kac(schedule=args.schedule, integrator=args.integrator)
