@@ -37,10 +37,12 @@ class Kac():
     - Han et als model settings    -    Base model 3
     """
 
-    def __init__(self, time_steps: str = 'uniform', integrator: str = 'euler'):
+    def __init__(self, schedule: str = 'uniform', integrator: str = 'euler'):
 
-        assert time_steps in ['uniform', 'karras']
+        assert schedule in ['uniform', 'karras']
         assert integrator in ['euler', 'karras']
+
+        if integrator == 'karras': assert schedule == 'karras'
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -68,7 +70,7 @@ class Kac():
         self.epsilon = 1e-5    # time truncation
         self.T = 1    # max time
 
-        self.time_steps = time_steps
+        self.schedule = schedule
         self.integrator = integrator
         self.S = 50    # amount of sampling steps
 
@@ -105,11 +107,11 @@ class Kac():
 
         return torch.ones_like(t, device=self.device)
 
-    def get_karras_schedule(self) -> list[float]:
+    def get_karras_schedule(self, N: int) -> list[float]:
 
         t_values = [
-            (self.T**(1/self.karras_p) + (i / (self.S - 1)) * (self.epsilon**(1/self.karras_p) - self.T**(1/self.karras_p)))**self.karras_p 
-            for i in (range(self.S))
+            (self.T**(1/self.karras_p) + (i / (N - 1)) * (self.epsilon**(1/self.karras_p) - self.T**(1/self.karras_p)))**self.karras_p 
+            for i in (range(N))
         ] + [0.0]
 
         return t_values
@@ -202,39 +204,52 @@ class Kac():
                 ))
                 xt = xT
 
-                dt = (1 - self.epsilon) / self.S
+                if self.integrator == 'euler':
 
-                if self.time_steps == 'uniform':
-                    time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
-                else:    # self.time_steps == 'karras':
-                    time_steps = self.get_karras_schedule()
+                    if self.schedule == 'uniform':
+                        dt = (1 - self.epsilon) / self.S
+                        time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
 
-                for i in range(len(time_steps) - 1):
+                    else:    # self.time_steps == 'karras':
+                        #! Cut off the trailing two values — which are roughly eps and 0 — so that the Euler integrator takes
+                        #!      one final ever so little step to zero
+                        #! Also add a step to the schedule, so that the S-th step is one before eps. As it would be in the
+                        #!      uniform schedule
+                        time_steps = self.get_karras_schedule(self.S + 1)[:-2]
 
-                    if self.integrator == 'euler':
+                    for i in range(len(time_steps)):
 
                         t = time_steps[i]
+
+                        if i < len(time_steps) - 1:
+                            dt = t - time_steps[i + 1]
+                        else:
+                            dt = t - self.epsilon
 
                         t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
                         pred_v = model(xt, t_tensor * 1000)
                         xt = xt - pred_v * dt
 
-                    elif self.integrator == 'karras':
+                elif self.integrator == 'karras':
+
+                    time_steps = self.get_karras_schedule(self.S)
+
+                    for i in range(len(time_steps) - 1):
 
                         ti = time_steps[i]
                         tip = time_steps[i + 1]
-                        diff = tip - ti
+                        dt = tip - ti
 
                         # ? Evaluate velocity at ti (which is equivalent to evaluating the pfode at ti)
                         pred_v_i = model(xt, ti * 1000)
 
                         # ? Euler step
-                        x_intermediate = xt + diff * pred_v_i
+                        x_intermediate = xt + dt * pred_v_i
 
                         # ? Second order correction
                         if tip != 0:
                             pred_v_ip = model(x_intermediate, tip * 1000)
-                            xt = xt + diff * (0.5 * pred_v_i + 0.5 * pred_v_ip)
+                            xt = xt + dt * (0.5 * pred_v_i + 0.5 * pred_v_ip)
 
                         else:
                             xt = x_intermediate
@@ -373,9 +388,11 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
+    parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'karras'])
     args = parser.parse_args()
 
-    model = Kac()
+    model = Kac(schedule=args.schedule, integrator=args.integrator)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
