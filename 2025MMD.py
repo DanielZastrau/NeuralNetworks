@@ -89,7 +89,7 @@ class MMD():
         if self.model_size == 'small':
             self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                             model_channels=128, channel_mult=(1, 2, 2, 2),
-                            num_res_blocks=2, attention_resolutions=(2),
+                            num_res_blocks=2, attention_resolutions=(2,),
                             dropout=0.1,).to(self.device)
 
         elif self.model_size == 'medium':
