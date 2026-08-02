@@ -26,14 +26,22 @@ class Kac():
         Best 2k FID with S=100:    28.4
 
     Our model + Euler stepping + Karras schedule
+        Best 50k FID with S=100:    299.3 ???
 
-    - Han et als settings
-    - Karras schedule
-    - Karras Heun
-    - Data augmentation
+    Our model + Karras sampler + uniform steps
+        Best 50k FID with S=50:
+
+    - Karras schedule    -    Base model 1 just different sampling
+    - Karras Heun    -    Base model 1 just different sampling
+    - Data augmentation    -    Base model 2
+    - Han et als model settings    -    Base model 3
     """
 
-    def __init__(self):
+    def __init__(self, time_steps: str = 'uniform', integrator: str = 'euler'):
+
+        assert time_steps in ['uniform', 'karras']
+        assert integrator in ['euler', 'karras']
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -60,7 +68,9 @@ class Kac():
         self.epsilon = 1e-5    # time truncation
         self.T = 1    # max time
 
-        self.S = 100    # amount of sampling steps
+        self.time_steps = time_steps
+        self.integrator = integrator
+        self.S = 50    # amount of sampling steps
 
         self.karras_p = 7    # staying with the choice of 2022 - Karras - Elucidating the design space of diffusion models
 
@@ -193,13 +203,41 @@ class Kac():
                 xt = xT
 
                 dt = (1 - self.epsilon) / self.S
-                # time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
-                time_steps = self.get_karras_schedule()
-                for t in time_steps:
 
-                    t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
-                    pred_v = model(xt, t_tensor * 1000)
-                    xt = xt - pred_v * dt
+                if self.time_steps == 'uniform':
+                    time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
+                else:    # self.time_steps == 'karras':
+                    time_steps = self.get_karras_schedule()
+
+                for i in range(len(time_steps) - 1):
+
+                    if self.integrator == 'euler':
+
+                        t = time_steps[i]
+
+                        t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
+                        pred_v = model(xt, t_tensor * 1000)
+                        xt = xt - pred_v * dt
+
+                    elif self.integrator == 'karras':
+
+                        ti = time_steps[i]
+                        tip = time_steps[i + 1]
+                        diff = tip - ti
+
+                        # ? Evaluate velocity at ti (which is equivalent to evaluating the pfode at ti)
+                        pred_v_i = model(xt, ti * 1000)
+
+                        # ? Euler step
+                        x_intermediate = xt + diff * pred_v_i
+
+                        # ? Second order correction
+                        if tip != 0:
+                            pred_v_ip = model(x_intermediate, tip * 1000)
+                            xt = xt + diff * (0.5 * pred_v_i + 0.5 * pred_v_ip)
+
+                        else:
+                            xt = x_intermediate
 
                 if amount == 50_000:
                     print(f'sampled {j * 512 + how_many} / 50_000')
