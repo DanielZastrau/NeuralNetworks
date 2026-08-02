@@ -130,8 +130,8 @@ class Kac():
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
 
-        if isinstance(t, float):
-            t = torch.full((x.shape[0],), t, dtype=torch.float32, device=self.device)
+        if isinstance(t, torch.FloatTensor):
+            t = t.expand((x.shape[0],))
 
         active_model = getattr(model, "module", model)
 
@@ -250,7 +250,7 @@ class Kac():
                         #!      one final ever so little step to zero
                         #! Also add a step to the schedule, so that the S-th step is one before eps. As it would be in the
                         #!      uniform schedule
-                        time_steps = self.get_karras_schedule(self.S + 1)[:-2]
+                        time_steps = torch.tensor(self.get_karras_schedule(self.S + 1)[:-2], device=self.device, dtype=torch.float32)
 
                     for i in range(len(time_steps)):
 
