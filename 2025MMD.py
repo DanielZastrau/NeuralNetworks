@@ -15,6 +15,10 @@ class MMD():
     2026 - Chemseddine et al - Adapting Noise to Data
 
     Later I want to see if I can add some of the diffusion modulations
+
+    With the bigger model:
+        Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
+        Min 50k FID with S=1_024:    
     """
 
     def __init__(self):

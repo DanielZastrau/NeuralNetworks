@@ -17,7 +17,18 @@ class Kac():
     No point in reimplementing the base model of 2026 - Han et al - DistillKac,
             as it is only a deeper unet.
     
-    Later I want to see if I can add some of the diffusion modulations
+    Later I want to see if I can add some of the diffusion modulations.
+
+    Their best 50k FID with S=100:    6.42
+
+    Our model + Euler stepping
+        Best 50k FID with S=100:    4.8
+        Best 2k FID with S=100:    28.4
+
+    - Han et als settings
+    - Karras schedule
+    - Karras Heun
+    - Data augmentation
     """
 
     def __init__(self):
@@ -78,7 +89,7 @@ class Kac():
 
     def get_model(self):
 
-        #! the network natively implements group normalization
+        #! The corrected network config of Duong et al
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, dropout=0.1,

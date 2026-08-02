@@ -13,9 +13,18 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 class DSBFM():
     """DSB-FM as describe in my master thesis
 
+    [01.08.26] - Run: zastrau - Reduced LR to 1e-4
+            Min 2k FID at 400k iterations:    ~54
+    [01.08.26] - Run: zastrau2 - Added weighting
+            Min 2k FID at 400k iterations:    ~55
+    [02.08.26] - Run: zastrau3 - Added gradient clipping
+
+
     In the future I want to apply some of the diffusion improvements here too.
     But my expectation is that it yields close to the same results, since it
     basically is a diffusion model.
+
+    I think the improvements due to Karras 2022 should be largly applicable
     """
 
     def __init__(self):
@@ -28,7 +37,7 @@ class DSBFM():
 
         self.I = 400_000    # amount of training iterations
         self.S = 1_024    # amount of sampling steps
-        self.lr = 1e-4
+        self.lr = 2e-4
         self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
 
@@ -54,6 +63,10 @@ class DSBFM():
     def g(self, t: torch.Tensor):
 
         return torch.sqrt(t)
+
+    def weight(self, t: torch.Tensor):
+
+        return (4 * t * (1 - t)**2) / ((1 + t) ** 2)
 
     def get_model(self):
 
@@ -89,12 +102,12 @@ class DSBFM():
         # [B, C, H, W]
         xt = ft * x0 + gt * z
 
-        pred = model(xt, t * 1000)
+        pred_v = model(xt, t * 1000)
+        target_v = -x0 + 0.5 * gt**(-1) * z
 
-        # ? This is the Lagrangian formulation, which we prefer for its stability near zero
-        target = -x0 + 0.5 * gt**(-1) * z
+        weight = self.weight(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
-        return torch.nn.functional.mse_loss(pred, target)
+        return (torch.nn.functional.mse_loss(pred_v, target_v, reduction='none') * weight).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -159,7 +172,7 @@ class DSBFM():
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.sqrt(sum(p.grad.data.norm() ** 2 for p in self.model.parameters() if p.grad is not None))
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             print(f'Grad norm: {grad_norm.item()}')
 
             self.optim.step()
