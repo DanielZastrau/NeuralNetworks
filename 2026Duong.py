@@ -21,7 +21,13 @@ class Kac():
     
     Later I want to see if I can add some of the diffusion modulations.
 
-    Their best 50k FID with S=100:    6.42
+    Duong's best 50k FID with S=100:    6.42
+
+    Han's best 50k FID result with S=100:
+        Midpoint with guidance strength 1.2:    3.54
+        AB2 with guidance strength 1.2:    3.58
+        Explicit euler with guidance strengths 1.2 and 1.3:    4.00
+    ( NOTE:  Guidance in velocity space is not implemented here. )
 
     Base model 1 + Euler integrator + uniform schedule
         50k FID with S=100:    4.8
@@ -32,6 +38,13 @@ class Kac():
 
     Base model 1 + Heun integrator + uniform schedule
         50k FID with S=50:    9.1535
+        50k FID with S=100:    4.8
+
+    Base model 1 + Midpoint integrator + uniform schedule
+        50k FID with S=100:    5.79
+
+    Base model 1 + AB2 integrator + uniform schedule
+        50k FID with S=100:    5.8
 
     Base model 1 + Heun integrator + Karras schedule
         50k FID with S=50:    10.8887
@@ -39,6 +52,7 @@ class Kac():
     Thoughts:
         - Karras schedule seem to yield worse results
         - Heun integrator also seems to yield worse results
+        - Also Euler seems to perform best in general
 
     - Data augmentation    -    Base model 2
     - Han et als model settings    -    Base model 3
@@ -60,8 +74,8 @@ class Kac():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
-        self.a = 25
-        self.c = 2
+        self.a = 25    # best according to 2026 - Duong - Telegraphers generative model via Kac flows
+        self.c = 2    # best according to 2026 - Duong - Telegraphers generative model via Kac flows
 
         self.sampler = TorchKacConstantSampler(
             a=self.a,
