@@ -60,12 +60,15 @@ class Kac():
     I mistakenly trained my models with time truncation 1e-5, but that difference is marginal, so I am gonna leave it in there.
     """
 
-    def __init__(self, which: str = 'simple', schedule: str = 'uniform', integrator: str = 'euler', S: int = 100):
+    def __init__(self, which: str = 'simple', schedule: str = 'uniform',
+                 integrator: str = 'euler', S: int = 100,
+                 pretrained: bool = False, best_score: float = 10_000.0):
 
         assert schedule in ['uniform', 'karras']
         assert integrator in ['euler', 'heun', 'midpoint', 'ab2']
 
         self.which = which
+        self.pretrained = pretrained
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -116,7 +119,7 @@ class Kac():
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
 
-        self.best_score = 10_000.0
+        self.best_score = best_score
         self.score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
 
     def f(self, t: torch.Tensor):
@@ -368,6 +371,10 @@ class Kac():
     def train(self):
 
         self.get_model()
+
+        if self.pretrained:
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
         self.get_ema()
         self.get_optim()
 
@@ -497,9 +504,16 @@ if __name__ == '__main__':
     parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
     parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun', 'midpoint', 'ab2'])
     parser.add_argument('--S', type=int, default=100)
+    parser.add_argument('--pretrained', action='store_true')
+    parser.add_argument('--best-score', type=float, help='If resuming training of a pretrained model, provide its best score')
     args = parser.parse_args()
 
-    model = Kac(which=args.which, schedule=args.schedule, integrator=args.integrator, S=args.S)
+    if args.pretrained: assert args.best_score is not None
+
+    model = Kac(which=args.which, schedule=args.schedule,
+                integrator=args.integrator, S=args.S,
+                pretrained=args.pretrained, best_score=args.best_score if args.best_score is not None else 10_000.0)
+    
     if args.what == 'full' or args.what == 'train':
         model.train()
 
