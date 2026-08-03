@@ -49,10 +49,16 @@ class Kac():
     Base model 1 + Heun integrator + Karras schedule
         50k FID with S=50:    10.8887
 
+    Base model 2 + Euler integrator + Uniform schedule
+        after 400k iterations
+            best 2k fid with S=100:    28.71
+            best 50k fid with S=100:    5.62
+
     Thoughts:
         - Karras schedule seem to yield worse results
         - Heun integrator also seems to yield worse results
         - Also Euler seems to perform best in general
+        - Continued training base 2 for another 400k iterations, because it did not yet converge after the first 400k
 
     - Data augmentation    -    Base model 2
     - Han et als model settings    -    Base model 3
@@ -62,7 +68,8 @@ class Kac():
 
     def __init__(self, which: str = 'simple', schedule: str = 'uniform',
                  integrator: str = 'euler', S: int = 100,
-                 pretrained: bool = False, best_score: float = 10_000.0):
+                 pretrained: bool = False, best_score: float = 10_000.0,
+                 load_teacher: bool = False):
 
         assert schedule in ['uniform', 'karras']
         assert integrator in ['euler', 'heun', 'midpoint', 'ab2']
@@ -122,6 +129,11 @@ class Kac():
         self.best_score = best_score
         self.score_save_path = os.path.join(self.curr_dir, 'best_score_model.pth')
 
+        if load_teacher:
+
+            self.get_model()
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
     def f(self, t: torch.Tensor):
 
         return 1 - t
@@ -146,6 +158,21 @@ class Kac():
         ] + [0.0]
 
         return t_values
+
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor):
+
+        ft = self.f(t=t)
+        gt = self.g(t=t)
+
+        # [B, C x H x W]
+        z = self.sampler.sample(gt, dim=self.data.data_dims.total_dimension).to(self.device)
+
+        # [B, C, H, W]
+        z = z.reshape(x0.shape)
+
+        # [B, C, H, W] = [B,] * [B, C, H, W] + [B, C, H, W]
+        return ft.view(-1, *([1] * (x0.dim() - 1))) * x0 + z
+
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
 
@@ -204,19 +231,11 @@ class Kac():
         t = torch.rand((x0.shape[0],), device=self.device)
 
         # [B,]
-        ft = self.f(t=t)
         dft = self.df(t=t)
         gt = self.g(t=t)
         dgt = self.dg(t=t)
 
-        # [B, C x H x W]
-        z = self.sampler.sample(gt, dim=self.data.data_dims.total_dimension).to(self.device)
-
-        # [B, C, H, W]
-        z = z.reshape(x0.shape)
-
-        # [B, C, H, W] = [B,] * [B, C, H, W] + [B, C, H, W]
-        xt = ft.view(-1, *([1] * (x0.dim() - 1))) * x0_aug + z
+        xt = self.noisify(t=t, x0=x0_aug)
 
         # [B, C, H, W] = [B,] * [B, C, H, W]
         drift = dft.view(-1, *([1] * (x0.dim() - 1))) * x0_aug
