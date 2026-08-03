@@ -7,8 +7,10 @@ import torch_fidelity
 import matplotlib.pyplot as plt
 
 from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.dataAugmentation import KarrasAugmentationPipeline
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
+from Cluster.utils.nn_utils import timestep_embedding
 
 class DSBFM():
     """DSB-FM as describe in my master thesis
@@ -21,6 +23,7 @@ class DSBFM():
     [02.08.26]    Run: zastrau3    Added gradient clipping
             Min 2k FID at 400k iterations:    ~34 @ 150k iterations  >  after that followed degradation
             50k FID:    10.9
+    [02.08.26]    Run: zastrau4    Added Karras augmentation to fight the degradation / overfitting
 
 
     In the future I want to apply some of the diffusion improvements here too.
@@ -30,7 +33,10 @@ class DSBFM():
     I think the improvements due to Karras 2022 should be largly applicable
     """
 
-    def __init__(self):
+    def __init__(self, which: str = 'simple'):
+
+        self.which = which
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -38,17 +44,21 @@ class DSBFM():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
+        self.augmentation_pipeline = KarrasAugmentationPipeline()
+
         self.I = 400_000    # amount of training iterations
         self.S = 1_024    # amount of sampling steps
         self.lr = 2e-4
         self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
 
+        self.model_channels = 128
+
         self.base = '/work/zastrau/2026Zastrau'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, 'simple')
+        self.curr_dir = os.path.join(self.base, which)
         if not os.path.exists(self.curr_dir):
             os.mkdir(self.curr_dir)
 
@@ -71,13 +81,40 @@ class DSBFM():
 
         return (4 * t * (1 - t)**2) / ((1 + t) ** 2)
 
+
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+
+        if not isinstance(t, torch.Tensor) or t.dim() == 0:
+            t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
+        elif t.shape[0] != x.shape[0]:
+            t = t.expand((x.shape[0], ))
+
+        if self.which == 'simple':
+
+            return model(x, t * 1_000)
+
+        else:
+            active_model = getattr(model, "module", model)
+
+            t_emb = timestep_embedding(t * 1_000, self.model_channels)
+            emb = active_model.time_embed(t_emb)
+
+            if aug_cond is None:
+                aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
+
+            emb = emb + active_model.aug_proj(aug_cond)
+
+            return model(x, timesteps = None, emb_override=emb)
+
     def get_model(self):
 
-        # ! Currently a smaller model to search some hyperparameters
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                         model_channels=128, channel_mult=(1, 2, 2, 2),
+                         model_channels=self.model_channels, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=2, attention_resolutions=(2,),
                          dropout=0.1,).to(self.device)
+
+        if self.which == 'augmented':
+            self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device)
 
     def get_ema(self):
 
@@ -93,6 +130,11 @@ class DSBFM():
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
+        if self.which == 'simple':
+            x0_aug, aug_cond = x0, None
+        else:    # self.which == 'augmented':
+            x0_aug, aug_cond = self.augmentation_pipeline(x0)
+
         # [B,]
         t = torch.rand((x0.shape[0],), device=self.device)
         t = torch.clamp(t, min=self.epsilon)
@@ -103,12 +145,12 @@ class DSBFM():
         gt = self.g(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
         # [B, C, H, W]
-        xt = ft * x0 + gt * z
+        xt = ft * x0_aug + gt * z
 
-        pred_v = model(xt, t * 1000)
-        target_v = -x0 + 0.5 * gt**(-1) * z
+        pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
+        target_v = -x0_aug + 0.5 * gt**(-1) * z
 
-        weight = self.weight(t=t).view(-1, *([1] * (x0.dim() - 1)))
+        weight = self.weight(t=t).view(-1, *([1] * (x0_aug.dim() - 1)))
 
         return (torch.nn.functional.mse_loss(pred_v, target_v, reduction='none') * weight).mean()
 
@@ -134,8 +176,7 @@ class DSBFM():
                 for t in time_steps:
 
                     # [B,]
-                    t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
-                    pred_v = model(xt, t_tensor * 1_000)
+                    pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
                     xt = xt - pred_v * dt
         
                 if amount == 50_000:
@@ -272,9 +313,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--which', type=str, default='simple', choices=['simple', 'augmented'])
     args = parser.parse_args()
 
-    model = DSBFM()
+    model = DSBFM(which=args.which)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
