@@ -17,6 +17,10 @@ class Diffusion():
     [30.07.26] - For some reason I had a final integration step after the sampling loop, which I now removed.
     [01.08.26] - Worked through the official implementation. They first define a numerically stable log snr and then redefine everything on
                     top of it.
+    [03.08.26] - Still does not produce results, going to implement their work even further.
+                    Their implementation first calculates all entities from the network predicition and then calculates all losses x0, z, v.
+                    From there it routes to the correct loss based on the weighting wanted, i.e.,  constant weight to x0,  snr weight to z,
+                    snr_trunc weight to the maximum between x0 and z,  and snrpp to v
 
     This implements:
         - x0 prediction with snr_trunc weighting and a { stable log snr schedule (adapted from their official repo) } with direct DDIM sampling
@@ -27,10 +31,11 @@ class Diffusion():
         - unweighted v-prediction with 512 sampling steps     2.87
     """
 
-    def __init__(self, prediction_target: str = 'v'):
+    def __init__(self, prediction_target: str = 'x0', loss_target: str = 'x0'):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.prediction_target = prediction_target
+        self.loss_target = loss_target
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
@@ -87,15 +92,38 @@ class Diffusion():
         lambda_t = self.stable_log_snr(t=t)
         return torch.sqrt(torch.sigmoid(- lambda_t)).view(-1, *([1] * (x.dim() - 1)))
 
-    def alpha_trigonometric(self, t: torch.Tensor, x: torch.Tensor):
+    def predict_x0_from_z(self, xt: torch.Tensor, z: torch.Tensor, t: torch.Tensor):
+        """x = (xt - sigma z) / alpha"""
 
-        # ? See the trigonometric formulation in Appendix D
-        return torch.cos(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+        alpha_t = self.alpha_snr(t=t, x=xt)
+        sigma_t = self.sigma_snr(t=t, x=xt)
 
-    def sigma_trigonometric(self, t: torch.Tensor, x: torch.Tensor):
+        return (xt - sigma_t * z) / alpha_t
 
-        # ? See the trigonometric formulation in Appendix D
-        return torch.sin(0.5 * torch.pi * t).to(self.device).view(-1, *([1] * (x.dim() - 1)))
+    def predict_z_from_x0(self, xt: torch.Tensor, x0: torch.Tensor, t: torch.Tensor):
+        """z = (xt - alpha x ) / sigma"""
+
+        alpha_t = self.alpha_snr(t=t, x=xt)
+        sigma_t = self.sigma_snr(t=t, x=xt)
+        return (xt - alpha_t * x0) / sigma_t
+
+    def predict_x0_from_v(self, xt: torch.Tensor, v: torch.Tensor, t: torch.Tensor):
+        """x0 = alpha * xt - sigma * v
+        
+        Follows from the trigonometric definitions."""
+
+        alpha_t = self.alpha_snr(t=t, x=xt)
+        sigma_t = self.sigma_snr(t=t, x=xt)
+
+        return alpha_t * xt - sigma_t * v
+
+    def predict_v_from_x0_and_z(self, x0: torch.Tensor, z: torch.Tensor, t: torch.Tensor):
+        """v = alpha z - sigma x0"""
+
+        alpha_t = self.alpha_snr(t=t, x=x0)
+        sigma_t = self.sigma_snr(t=t, x=x0)
+
+        return alpha_t * z - sigma_t * x0
 
     def get_model(self):
 
@@ -123,30 +151,48 @@ class Diffusion():
         t = torch.rand((x0.shape[0],), device=self.device)
         z = torch.randn_like(x0, device=self.device)
 
-        if self.prediction_target == 'x0':
-
-            alpha_t = self.alpha_snr(t=t, x=x0)
-            sigma_t = self.sigma_snr(t=t, x=x0)
-
-        else:    # self.prediction_target == 'v':
-
-            alpha_t = self.alpha_trigonometric(t, x0)
-            sigma_t = self.sigma_trigonometric(t, x0)
+        alpha_t = self.alpha_snr(t=t, x=x0)
+        sigma_t = self.sigma_snr(t=t, x=x0)
 
         xt = alpha_t * x0 + sigma_t * z
 
         pred = model(xt, t * 1_000)
 
+        # Calculate the other entities from the prediction.  ( as was done in the original implementation )
         if self.prediction_target == 'x0':
 
-            weight = self.stable_snr_trunc(t=t, x=x0)
-            return (torch.nn.functional.mse_loss(pred, x0, reduction='none') * weight).mean()
+            pred_x0 = pred
 
-        else:    # self.prediction_target == 'v'
+            pred_z = self.predict_z_from_x0(xt=xt, x0=pred_x0, t=t)
+            pred_v = self.predict_v_from_x0_and_z(x0=pred_x0, z=pred_z, t=t)
 
-            vt = alpha_t * z - sigma_t * x0
+        else:    # self.prediction_target == 'v':
 
-            return torch.nn.functional.mse_loss(pred, vt)
+            pred_v = pred
+
+            pred_x0 = self.predict_x0_from_v(xt=xt, v=pred_v, t=t)
+            pred_z = self.predict_z_from_x0(xt=xt, x0=pred_x0, t=t)
+
+        pred_x0 = pred_x0.clamp(min=-1.0, max=1.0)
+
+        x0_target = x0
+        z_target = z
+        v_target = self.predict_v_from_x0_and_z(x0=x0, z=z, t=t)
+
+        # Compute the per-sample loss
+        x0_loss = torch.nn.functional.mse_loss(pred_x0, x0_target, reduction='none').mean(dim=[1, 2, 3])
+        z_loss = torch.nn.functional.mse_loss(pred_z, z_target, reduction='none').mean(dim=[1, 2, 3])
+        v_loss = torch.nn.functional.mse_loss(pred_v, v_target, reduction='none').mean(dim=[1, 2, 3])
+
+        if self.loss_target == 'x0':    #! this is constant weighting  (not referenced in the paper)
+            return x0_loss.mean()
+        elif self.loss_target == 'z':    #! this is the snr weighting
+            return z_loss.mean()
+        elif self.loss_target == 'v':    #! this is the snrpp weighting
+            return v_loss.mean()
+        else:    # self.loss_target == 'x0z':    #! this is the snr_trunc weighting
+            return torch.maximum(x0_loss, z_loss).mean()
+
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -172,24 +218,21 @@ class Diffusion():
                 with torch.no_grad():
                     pred = model(xt, t * 1_000)
 
+                alpha_s = self.alpha_snr(t=t - dt, x=xt)
+                sigma_s = self.sigma_snr(t=t - dt, x=xt)
+
+                # Calculate the other entities from the prediction.  ( as was done in the original implementation )
                 if self.prediction_target == 'x0':
-                    alpha_s = self.alpha_snr(t - dt, xt)
-                    alpha_t = self.alpha_snr(t, xt)
 
-                    sigma_s = self.sigma_snr(t - dt, xt)
-                    sigma_t = self.sigma_snr(t, xt)
-
-                    # we are working with tensors in the range [-1, 1]
-                    x0_pred = pred.clamp(min=-1.0, max=1.0)
-
-                    # ? Because we reformulated sigma in terms of a numerically stable snr schedule, this division is stable.
-                    xt = alpha_s * x0_pred + sigma_s * ( (xt - alpha_t * x0_pred) / sigma_t)
+                    pred_x0 = pred.clamp(min=-1.0, max=1.0)
+                    pred_z = self.predict_z_from_x0(xt=xt, x0=pred_x0, t=t)
 
                 else:    # self.prediction_target == 'v':
 
-                    # ? angular update, see appendix d, more stable as it is division free
-                    phi_dt = torch.tensor(0.5 * torch.pi * dt, device=self.device, dtype=torch.float32)
-                    xt = torch.cos(phi_dt) * xt - torch.sin(phi_dt) * pred
+                    pred_x0 = self.predict_x0_from_v(xt=xt, v=pred, t=t).clamp(min=-1.0, max=1.0)
+                    pred_z = self.predict_z_from_x0(xt=xt, x0=pred_x0, t=t)
+
+                xt = alpha_s * pred_x0 + sigma_s * pred_z
 
             xt = xt.clamp(min=-1.0, max=1.0)
             samples.append(xt.cpu())
@@ -326,9 +369,9 @@ class Diffusion():
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--prediction-target', type=str, default='v', choices=['v', 'x0'])
     parser.add_argument('--what', type=str, default='full', choices=['full', 'train', 'eval'])
-
+    parser.add_argument('--prediction-target', type=str, default='x0', choices=['v', 'x0'])
+    parser.add_argument('--loss-target', type=str, default='x0', choices=['x0', 'z', 'v', 'x0z'])
     args = parser.parse_args()
 
     Salimans = Diffusion(prediction_target=args.prediction_target)

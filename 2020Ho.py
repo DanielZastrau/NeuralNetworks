@@ -22,7 +22,8 @@ class Diffusion():
         50k FID with T=1_000:  3.5
 
     Looking at the training overviews (see the other repo) one notices the following:
-        1) leads to more degradation of FID values in the latter half, while 2) actually keeps improving over the entire training time.
+        1)  leads to more degradation of FID values in the latter half,
+        while 2)  actually keeps improving over the entire training time.
     """
 
     def __init__(self, sigma_choice: str = 'simple', gradient_clipping: bool = False, horizontal_flipping: bool = True):

@@ -13,12 +13,14 @@ from Cluster.networks.neuralNetworkOpenAI import UNetModel
 class DSBFM():
     """DSB-FM as describe in my master thesis
 
-    [01.08.26] - Run: zastrau - Reduced LR to 1e-4
+    [01.08.26]    Run: zastrau     Reduced LR to 1e-4
             Min 2k FID at 400k iterations:    ~54
             With the reduced learning rate the Fid score trajectory also looks better, and is more stably trending downward
-    [01.08.26] - Run: zastrau2 - Added weighting
+    [01.08.26]    Run: zastrau2    Added weighting
             Min 2k FID at 400k iterations:    ~55
-    [02.08.26] - Run: zastrau3 - Added gradient clipping
+    [02.08.26]    Run: zastrau3    Added gradient clipping
+            Min 2k FID at 400k iterations:    ~34 @ 150k iterations  >  after that followed degradation
+            50k FID:    10.9
 
 
     In the future I want to apply some of the diffusion improvements here too.
