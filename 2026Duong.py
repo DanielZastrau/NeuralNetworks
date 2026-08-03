@@ -171,7 +171,7 @@ class Kac():
         z = z.reshape(x0.shape)
 
         # [B, C, H, W] = [B,] * [B, C, H, W] + [B, C, H, W]
-        return ft.view(-1, *([1] * (x0.dim() - 1))) * x0 + z
+        return ft.view(-1, *([1] * (x0.dim() - 1))) * x0 + z, z
 
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
@@ -235,7 +235,7 @@ class Kac():
         gt = self.g(t=t)
         dgt = self.dg(t=t)
 
-        xt = self.noisify(t=t, x0=x0_aug)
+        xt, z = self.noisify(t=t, x0=x0_aug)
 
         # [B, C, H, W] = [B,] * [B, C, H, W]
         drift = dft.view(-1, *([1] * (x0.dim() - 1))) * x0_aug
