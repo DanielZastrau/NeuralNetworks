@@ -18,7 +18,7 @@ class GenerativeModel(Protocol):
     S: int
     model: torch.nn.Module
 
-    def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> torch.Tensor:
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor, x: torch.Tensor, aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
@@ -102,7 +102,7 @@ class Distillation():
             n = torch.randint(0, self.student_steps, (x0.shape[0],), device=self.device)
             t = t_endpoints[n]
 
-            xt = self.model.noisify(t=t, x0=x0)
+            xt, _ = self.model.noisify(t=t, x0=x0)
 
             #? Euler stepping with the teacher
             with torch.no_grad():
