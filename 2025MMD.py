@@ -7,6 +7,8 @@ import torch_fidelity
 import matplotlib.pyplot as plt
 
 from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.dataAugmentation import KarrasAugmentationPipeline
+from Cluster.utils.nn_utils import timestep_embedding
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 
@@ -14,16 +16,21 @@ class MMD():
     """The MMD Gradient flow toward a uniform distribution was talked about (introduced in?)
     2026 - Chemseddine et al - Adapting Noise to Data
 
-    Later I want to see if I can add some of the diffusion modulations
+    Added a config for Karras augmentation. Currently it is only added on top of the smaller model.
 
     With the smaller model:
+        Min 2k FID with S=1_024:    ~29.04
+        50k FID with S=1_024:    ~6.4
     
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
         Min 50k FID with S=1_024:    5.4
     """
 
-    def __init__(self, model_size: str = 'small'):
+    def __init__(self, size: str = 'small', data_augmentation: bool = False, I: int = 400_000):
+
+        print(f'The following model is trained:    {size}, with data augmentation?    {data_augmentation}')
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -31,21 +38,28 @@ class MMD():
             training_evaluation_period_fid_num_samples = 2_000,)
         )
 
-        self.model_size = model_size
+        self.augmented = data_augmentation
+        if self.augmented:
+            self.augmentation_pipeline = KarrasAugmentationPipeline()
+
+        self.size = size
 
         self.b = 3
 
-        self.I = 400_000
+        self.I = I
         self.lr = 2e-4
         self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
         self.S = 1_024    # amount of sampling steps
 
+        self.model_channels = 128
+
         self.base = '/work/zastrau/2025MMD'
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
-        self.curr_dir = os.path.join(self.base, 'small')
+        s = f'{self.size}augmented' if self.augmented else f'{size}'
+        self.curr_dir = os.path.join(self.base, s)
         if not os.path.exists(self.curr_dir):
             os.mkdir(self.curr_dir)
 
@@ -84,19 +98,46 @@ class MMD():
 
         return pre_z, z
 
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+
+        if not isinstance(t, torch.Tensor) or t.dim() == 0:
+            t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
+        elif t.shape[0] != x.shape[0]:
+            t = t.expand((x.shape[0], ))
+
+        if not self.augmented:
+            return model(x, t * 1_000)
+
+        else:    # self.size == 'augmented':
+            active_model = getattr(model, "module", model)
+
+            t_emb = timestep_embedding(t * 1_000, self.model_channels)
+            emb = active_model.time_embed(t_emb)
+
+            if aug_cond is None:
+                aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
+
+            emb = emb + active_model.aug_proj(aug_cond)
+
+            return model(x, timesteps = None, emb_override=emb)
+
     def get_model(self):
 
-        if self.model_size == 'small':
+        if self.size == 'small':
             self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                            model_channels=128, channel_mult=(1, 2, 2, 2),
+                            model_channels=self.model_channels, channel_mult=(1, 2, 2, 2),
                             num_res_blocks=2, attention_resolutions=(2,),
                             dropout=0.1,).to(self.device)
 
-        elif self.model_size == 'medium':
+        elif self.size == 'medium':
             self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
-                            model_channels=128, channel_mult=(1, 2, 2, 2),
+                            model_channels=self.model_channels, channel_mult=(1, 2, 2, 2),
                             num_res_blocks=3, attention_resolutions=(2, 4),
                             dropout=0.1,).to(self.device)
+
+        if self.augmented:
+            self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
+        
 
     def get_ema(self):
 
@@ -112,6 +153,11 @@ class MMD():
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
+        if self.augmented:
+            x0_aug, aug_cond = self.augmentation_pipeline(x0)
+        else:
+            x0_aug, aug_cond = x0, None
+
         # [B,]
         t = torch.rand((x0.shape[0],), device=self.device)
 
@@ -122,13 +168,13 @@ class MMD():
         dgt = self.dg(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
         # [B, C, H, W]
-        pre_z, z = self.noise(t=t, x=x0)
+        pre_z, z = self.noise(t=t, x=x0_aug)
 
         # [B, C, H, W]
-        xt = ft * x0 + z
+        xt = ft * x0_aug + z
 
-        pred = model(xt, t * 1000)
-        target = dft * x0 + dgt * (pre_z / torch.exp(gt / self.b))
+        pred = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
+        target = dft * x0_aug + dgt * (pre_z / torch.exp(gt / self.b))
 
         return torch.nn.functional.mse_loss(pred, target)
 
@@ -154,9 +200,7 @@ class MMD():
                 time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
                 for t in time_steps:
 
-                    # [B,]
-                    t_tensor = torch.full((xT.shape[0],), float(t), device=self.device, dtype=torch.float32)
-                    pred_v = model(xt, t_tensor * 1_000)
+                    pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
                     xt = xt - pred_v * dt
         
                 if amount == 50_000:
@@ -293,10 +337,12 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
-    parser.add_argument('--model-size', type=str, default='small', choices=['small', 'medium'])
+    parser.add_argument('--size', type=str, default='small', choices=['small', 'medium'])
+    parser.add_argument('--data-augmentation', action='store_true')
+    parser.add_argument('--I', type=int, default=400_000)
     args = parser.parse_args()
 
-    model = MMD(model_size = args.model_size)
+    model = MMD(size = args.size, data_augmentation=args.data_augmentation, I=args.I)
     if args.what == 'full' or args.what == 'train':
         model.train()
 

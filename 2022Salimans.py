@@ -21,10 +21,9 @@ class Diffusion():
                     Their implementation first calculates all entities from the network predicition and then calculates all losses x0, z, v.
                     From there it routes to the correct loss based on the weighting wanted, i.e.,  constant weight to x0,  snr weight to z,
                     snr_trunc weight to the maximum between x0 and z,  and snrpp to v
-
-    This implements:
-        - x0 prediction with snr_trunc weighting and a { stable log snr schedule (adapted from their official repo) } with direct DDIM sampling
-        - v prediction in angular coordinates and angular DDIM sampling (see appendix D)
+    [04.08.26] - Stopped training. This did not produce satisfying results and I saw no further purpose to trying to fix it.
+                    Neither was I still learning something by trying to fix it nor was it needed for my master thesis.
+                    My continue in the future at some point.
 
     Their Fid scores:
         - snr_trunc weighted x0-pred and 512 sampling steps     2.51
