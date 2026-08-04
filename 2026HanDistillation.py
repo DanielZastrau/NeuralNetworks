@@ -170,7 +170,7 @@ if __name__=='__main__':
     args = parser.parse_args()
 
     if args.which == '2026Duong':
-        duong_module = importlib.import_module('.2026Duong', package=__package__)
+        duong_module = importlib.import_module('2026Duong')
         model = duong_module.Kac(which='simple', schedule='uniform', integrator='euler', S=100, load_teacher=True)
         teacher = model.model
         student = copy.deepcopy(teacher)
