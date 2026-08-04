@@ -24,6 +24,9 @@ class ConsistencyModel():
     [30.07.26] - I just noticed that I had a bright moment when starting the job. Taking the hint from the 8 GPUs they used,
                     I was cautious enough to just set the time limit to 168 hours. That should allow it to get through roughly
                     640k iterations.
+    [04.08.26] - Stopped training. This did not produce satisfying results and I saw no further purpose to trying to fix it.
+                    Neither was I still learning something by trying to fix it nor was it needed for my master thesis.
+                    My continue in the future at some point.
     """
 
     def __init__(self):

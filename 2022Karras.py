@@ -20,6 +20,7 @@ class EDM():
         - This implements the parameterization of the network in terms of the functions "c...".
         - This implements the geometric transformations.
         - The zero output layer is natively implemented by the UNet
+        - This implements the Heun pfODE solver
 
     Differences to their work:
         - I am not training with a batch size of 512, because I have found that to cause an OOM error.
