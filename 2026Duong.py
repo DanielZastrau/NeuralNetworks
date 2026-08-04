@@ -74,6 +74,8 @@ class Kac():
         assert schedule in ['uniform', 'karras']
         assert integrator in ['euler', 'heun', 'midpoint', 'ab2']
 
+        print(f'The following model is trained:    {which}    with integrator:    {integrator}    and S:    {S}. Pretrained is set to:    {pretrained}.')
+
         self.which = which
         self.pretrained = pretrained
 
