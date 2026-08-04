@@ -30,9 +30,13 @@ class Kac():
     ( NOTE:  Guidance in velocity space is not implemented here. )
 
     Base model 1 + Euler integrator + uniform schedule
-        50k FID with S=100:    4.8
-        Best 2k FID with S=100:    28.4
-
+        after 400k iterations
+            50k FID with S=100:    4.8
+            Best 2k FID with S=100:    28.4
+        after 800k iterations
+            50k FID with S=100:    5.1
+            Best 2k FID with S=100:    28.1
+            
     Base model 1 + Euler integrator + Karras schedule
         50k FID with S=100:    7.1732
 
@@ -59,6 +63,7 @@ class Kac():
         - Heun integrator also seems to yield worse results
         - Also Euler seems to perform best in general
         - Continued training base 2 for another 400k iterations, because it did not yet converge after the first 400k
+        - 2k FID is such a small metric that improvements of just 0.5 or something can also be statistical noise.
 
     - Data augmentation    -    Base model 2
     - Han et als model settings    -    Base model 3
@@ -161,7 +166,7 @@ class Kac():
 
         return t_values
 
-    def noisify(self, t: torch.Tensor, x0: torch.Tensor):
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
         ft = self.f(t=t)
         gt = self.g(t=t)
@@ -186,7 +191,7 @@ class Kac():
         if self.which == 'simple':
             return model(x, t * 1_000)
 
-        else:    # self.which == 'model2':
+        else:    # self.which == 'augmented':
             active_model = getattr(model, "module", model)
 
             t_emb = timestep_embedding(t * 1_000, self.model_channels)
@@ -207,7 +212,7 @@ class Kac():
                          num_res_blocks=2, dropout=0.1,
                          attention_resolutions=(2,), num_heads=4, use_new_attention_order=True,).to(self.device)
 
-        if self.which == 'model2':
+        if self.which == 'augmented':
             self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4, device=self.device).to(self.device)
 
     def get_ema(self):
@@ -226,7 +231,7 @@ class Kac():
 
         if self.which == 'simple':
             x0_aug, aug_cond = x0, None
-        else:    # self.which == 'model2':
+        else:    # self.which == 'augmented':
             x0_aug, aug_cond = self.augmentation_pipeline(x0)
 
         # [B,]
@@ -521,7 +526,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
-    parser.add_argument('--which', type=str, default='simple', choices=['simple', 'model2'])
+    parser.add_argument('--which', type=str, default='simple', choices=['simple', 'augmented'])
     parser.add_argument('--schedule', type=str, default='uniform', choices=['uniform', 'karras'])
     parser.add_argument('--integrator', type=str, default='euler', choices=['euler', 'heun', 'midpoint', 'ab2'])
     parser.add_argument('--S', type=int, default=100)
