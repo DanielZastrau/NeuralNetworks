@@ -26,6 +26,16 @@ class DSBFM():
     [02.08.26]    Run: zastrau4    Added Karras augmentation to fight the degradation / overfitting
             Min 2k FID at 400k iterations:    ~33 ~ 400k iterationos
             50k FID:    9.2
+    [03.08.26]    Run: zastrau5    Added prediction scaling similar to what Karras did
+
+    
+    Thoughts:
+        Due to the t**(-1/2) factor in the lagrangian formulation of the velocity field, it diverges for t -> 0.
+                While the gradients are correctly stabilized by the weights — since they counteract the growth of
+                the loss itself — the divergence still poses problems to the network, because the final convolution
+                layer still has to output a very wide range of different values. Thereby, destabilizing the prediction.
+
+                Therefore, we scale the network predictions to a stable range, by pulling out the divergent factor.
     """
 
     def __init__(self, which: str = 'simple'):
@@ -142,12 +152,14 @@ class DSBFM():
         # [B, C, H, W]
         xt = ft * x0_aug + gt * z
 
-        pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
-        target_v = -x0_aug + 0.5 * gt**(-1) * z
+        pred_v_scaled = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
+        # target_v = -x0_aug + 0.5 * gt**(-1) * z
+        target_v_scaled = -x0_aug * gt + 0.5 * z
 
-        weight = self.weight(t=t).view(-1, *([1] * (x0_aug.dim() - 1)))
+        # since gt is pulled out of the network prediction, we scale the weight by it
+        weight = self.weight(t=t).view(-1, *([1] * (x0_aug.dim() - 1))) / (gt**2)
 
-        return (torch.nn.functional.mse_loss(pred_v, target_v, reduction='none') * weight).mean()
+        return (torch.nn.functional.mse_loss(pred_v_scaled, target_v_scaled, reduction='none') * weight).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
 
@@ -170,8 +182,14 @@ class DSBFM():
                 time_steps = torch.linspace(1, self.epsilon + dt, self.S, device=self.device, dtype=torch.float32)
                 for t in time_steps:
 
+                    t_tensor = torch.full((how_many,), float(t), device=self.device, dtype=torch.float32)
+                    gt = self.g(t=t_tensor).view(-1, *([1] * (xT.dim() - 1)))
+
                     # [B,]
-                    pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
+                    pred_v_scaled = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
+
+                    # Unscale to recover the actual velocity
+                    pred_v = pred_v_scaled / gt
                     xt = xt - pred_v * dt
         
                 if amount == 50_000:
