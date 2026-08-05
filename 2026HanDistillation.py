@@ -56,7 +56,7 @@ class Distillation():
 
         self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student.pth')
 
-        print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    {teacher_substeps}  many teacher substeps and saving to    {}')
+        print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.')
 
     def get_ema(self):
 
