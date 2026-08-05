@@ -26,13 +26,6 @@ class DSBFM():
     [02.08.26]    Run: zastrau4    Added Karras augmentation to fight the degradation / overfitting
             Min 2k FID at 400k iterations:    ~33 ~ 400k iterationos
             50k FID:    9.2
-
-
-    In the future I want to apply some of the diffusion improvements here too.
-    But my expectation is that it yields close to the same results, since it
-    basically is a diffusion model.
-
-    I think the improvements due to Karras 2022 should be largly applicable
     """
 
     def __init__(self, which: str = 'simple'):
