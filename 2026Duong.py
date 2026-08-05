@@ -29,7 +29,7 @@ class Kac():
         Explicit euler with guidance strengths 1.2 and 1.3:    4.00
     ( NOTE:  Guidance in velocity space is not implemented here. )
 
-    Base model 1 + Euler integrator + uniform schedule
+    Base model + Euler integrator + uniform schedule
         after 400k iterations
             50k FID with S=100:    4.8
             Best 2k FID with S=100:    28.4
@@ -37,26 +37,30 @@ class Kac():
             50k FID with S=100:    5.1
             Best 2k FID with S=100:    28.1
             
-    Base model 1 + Euler integrator + Karras schedule
+    Base model + Euler integrator + Karras schedule
         50k FID with S=100:    7.1732
 
-    Base model 1 + Heun integrator + uniform schedule
+    Base model + Heun integrator + uniform schedule
         50k FID with S=50:    9.1535
         50k FID with S=100:    4.8
 
-    Base model 1 + Midpoint integrator + uniform schedule
+    Base model + Midpoint integrator + uniform schedule
         50k FID with S=100:    5.79
 
-    Base model 1 + AB2 integrator + uniform schedule
+    Base model + AB2 integrator + uniform schedule
         50k FID with S=100:    5.8
 
-    Base model 1 + Heun integrator + Karras schedule
+    Base model + Heun integrator + Karras schedule
         50k FID with S=50:    10.8887
 
-    Base model 2 + Euler integrator + Uniform schedule
+    Augmented model + Euler integrator + Uniform schedule
         after 400k iterations
             best 2k fid with S=100:    28.71
             best 50k fid with S=100:    5.62
+
+    Distilling 50k FID results:
+        Base model 2x:    4.8    >    5.6
+        Base model 3x:
 
     Thoughts:
         - Karras schedule seem to yield worse results
@@ -264,6 +268,8 @@ class Kac():
         return torch.nn.functional.mse_loss(pred, target)
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        print(f'Sampling with    {self.S}  many steps.')
 
         samples = []
 
