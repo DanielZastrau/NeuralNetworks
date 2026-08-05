@@ -24,6 +24,8 @@ class DSBFM():
             Min 2k FID at 400k iterations:    ~34 @ 150k iterations  >  after that followed degradation
             50k FID:    10.9
     [02.08.26]    Run: zastrau4    Added Karras augmentation to fight the degradation / overfitting
+            Min 2k FID at 400k iterations:    ~33 ~ 400k iterationos
+            50k FID:    9.2
 
 
     In the future I want to apply some of the diffusion improvements here too.

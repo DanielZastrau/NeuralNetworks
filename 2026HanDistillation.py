@@ -17,6 +17,7 @@ class GenerativeModel(Protocol):
     curr_dir: str
     S: int
     model: torch.nn.Module
+    score_save_path: str
 
     def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...
@@ -49,11 +50,13 @@ class Distillation():
 
         self.epsilon = 1e-5
 
-        self.I = 100_000
+        self.I = 50_000 * teacher_substeps
         self.lr = 1e-4
         self.lr_warmup = int(self.I * 0.05)
 
         self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student.pth')
+
+        print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    {teacher_substeps}  many teacher substeps and saving to    {}')
 
     def get_ema(self):
 
@@ -140,6 +143,8 @@ class Distillation():
         self.model.model.load_state_dict(torch.load(self.student_save_path, map_location=self.device))
         self.model.S = self.student_steps
 
+        print(f'Evaluating    {self.student_save_path}.')
+
         eval_ds = self.data.get_dataset_for_full_eval()
 
         self.model.model.eval()
@@ -167,6 +172,8 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, default='full', choices=['full', 'distill', 'eval'])
     parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2025Mmd', '2026Zastrau', '2022Karras'])
+    parser.add_argument('--student-steps', type=int, required=True)
+    parser.add_argument('--teacher-substeps', type=int, required=True)
     args = parser.parse_args()
 
     if args.which == '2026Duong':
@@ -175,7 +182,7 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
-        Distillery = Distillation(model=model, student=student, teacher=teacher, student_steps=50, teacher_substeps=2)
+        Distillery = Distillation(model=model, student=student, teacher=teacher, student_steps=args.student_steps, teacher_substeps=args.teacher_substeps)
 
     if args.what == 'full' or args.what == 'train':
         Distillery.routine()
