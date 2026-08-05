@@ -74,6 +74,8 @@ class DSBFM():
         self.best_score = 10_000.0
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
+        print(f'Training the model:    {self.which}')
+
     def f(self, t: torch.Tensor):
 
         return 1 - t
