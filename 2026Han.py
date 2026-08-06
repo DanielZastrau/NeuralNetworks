@@ -305,7 +305,7 @@ if __name__=='__main__':
         student = copy.deepcopy(teacher)
 
     Distillery = Distillation(which = args.which, model=model, student=student, teacher=teacher, student_steps=args.student_steps, teacher_substeps=args.teacher_substeps)
-    if args.what == 'full' or args.what == 'train':
+    if args.what == 'full' or args.what == 'distill':
         Distillery.routine()
 
     if args.what == 'full' or args.what == 'eval':
