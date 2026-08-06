@@ -25,15 +25,16 @@ class EDM():
     Our implementation:
         Min 2k fid with S=50:    26.1
         50k fid with S=50:    2.65
+        50k fid with S=18:    
 
     Their best 50k fid with S=18:    ~1.98
 
     
     Differences to their work:
         - I am not training with a batch size of 512, because I have found that to cause an OOM error.
-                I am training with a batch size of 128 instead to stay consistenc with everything else.
+                I am training with a batch size of 128 instead to stay consistent with everything else.
         - Consequently their 400k iterations would become 1.6m iterations.
-                I cap them at 1m iterations, because I have found no benefits in the later stages of training.
+                I cap them at 1m iterations, because I have found no benefits to the later stages of training.
         - Because we train with a smaller batch size, we also have to adjust their learning rate by the same factor of 4.
                 Down from 1e-3 to 2.5e-4
 

@@ -5,6 +5,10 @@
 - *2021Song.py* implements the DDPM ++ cont. model described in "2021 - Song et al. - Score based generative models through stochastic differential equations"
 - *Salimans2022.py* implements the Diffuson Model as described in "2022 - Salimans & Ho - Progressive Distillation" with the x0 (or v) prediction loss and the DDIM sampler
 - *2023SongCT.py* implements the standalone consistency model as described in "2023 - Song et al. - Consistency Models"
+- *2025MMD.py* implements the MMD Gradient flow toward a uniform distribution as described in "2025 - Chemseddine et al - Adapting Noise to Data"
+- *2026Duong.py* implements the Kac generative model as described in "2026 - Duong et al - Telegraphers Generative Model via Kac Flows"
+- *2026Han.py* implements the endpoint distillation algorithm as described in "2026 - Han et al - DistillKac"
+- *2026Zastrau.py* implements the DSB-FM algorithm as described in my master thesis
 
 ### Good to have
 
