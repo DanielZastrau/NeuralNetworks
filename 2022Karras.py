@@ -22,6 +22,13 @@ class EDM():
         - The zero output layer is natively implemented by the UNet
         - This implements the Heun pfODE solver
 
+    Our implementation:
+        Min 2k fid with S=50:    26.1
+        50k fid with S=50:    2.65
+
+    Their best 50k fid with S=18:    ~1.98
+
+    
     Differences to their work:
         - I am not training with a batch size of 512, because I have found that to cause an OOM error.
                 I am training with a batch size of 128 instead to stay consistenc with everything else.
@@ -32,7 +39,7 @@ class EDM():
 
     """
 
-    def __init__(self):
+    def __init__(self, S: int = 50):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -52,7 +59,7 @@ class EDM():
         self.P_std = 1.2
 
         self.I = 1_000_000    # number of training iterations
-        self.S = 50    # number of sampling steps
+        self.S = S    # number of sampling steps
 
         self.time_factor = 1_000 / self.sigma_max
 
@@ -345,9 +352,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--S', type=int, default=50)
     args = parser.parse_args()
 
-    model = EDM()
+    model = EDM(S=S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
