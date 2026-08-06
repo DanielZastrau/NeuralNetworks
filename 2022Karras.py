@@ -169,7 +169,7 @@ class EDM():
                          num_res_blocks=4, attention_resolutions=(2,),
                          dropout=0.13, use_new_attention_order=True,)
 
-        self.model.aug_proj = torch.nn.Linear(9, model.model_channels * 4)
+        self.model.aug_proj = torch.nn.Linear(9, self.model_channels * 4)
 
         self.model.to(self.device)
 
