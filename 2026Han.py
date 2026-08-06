@@ -207,7 +207,7 @@ class Distillation():
                 if mask.any():
                     safe_sig_tip = torch.where(sigma_tip_bc == 0, torch.ones_like(sigma_tip_bc, device=self.device), sigma_tip_bc)
                     
-                    pred_tip = self.model.model_fn(model=self.teacher, t=sigma_tip, x=x_intermediate, aug_cond=aug_cond)
+                    pred_tip = self.model.model_fn(model=self.teacher, t=safe_sig_tip.flatten(), x=x_intermediate, aug_cond=aug_cond)
                     dtprime = (1 / safe_sig_tip) * x_intermediate - (1 / safe_sig_tip) * pred_tip
                     
                     xtarget = xtarget + diff_bc * (0.5 * dt + 0.5 * dtprime) * mask + diff_bc * dt * (1 - mask)
@@ -239,7 +239,7 @@ class Distillation():
         if mask_student.any():
             safe_sig_tip_stud = torch.where(student_sigma_tip_bc == 0, torch.ones_like(student_sigma_tip_bc, device=self.device), student_sigma_tip_bc)
             
-            pred_student_tip = self.model.model_fn(model=self.student, t=student_tip, x=x_inter_student, aug_cond=aug_cond)
+            pred_student_tip = self.model.model_fn(model=self.student, t=safe_sig_tip_stud.flatten(), x=x_inter_student, aug_cond=aug_cond)
             dtprime_student = (1 / safe_sig_tip_stud) * x_inter_student - (1 / safe_sig_tip_stud) * pred_student_tip
             
             xpred = xpred + student_diff_bc * (0.5 * dt_student + 0.5 * dtprime_student) * mask_student + student_diff_bc * dt_student * (1 - mask_student)
