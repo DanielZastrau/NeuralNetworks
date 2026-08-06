@@ -154,8 +154,11 @@ class EDM():
     def get_karras_schedule_betw_tensors(self, S: int, t_min: torch.Tensor, t_max: torch.Tensor) -> torch.Tensor:
         """This is only used in the distillation algorithm."""
 
+        t_min_safe = t_min.clamp(min=0.0)
+        t_max_safe = t_max.clamp(min=0)
+
         t_values = torch.stack([
-            (t_max**(1/self.karras_p) + (i / S) * (t_min**(1/self.karras_p) - t_max**(1/self.karras_p)))**self.karras_p 
+            (t_max_safe**(1/self.karras_p) + (i / S) * (t_min_safe**(1/self.karras_p) - t_max_safe**(1/self.karras_p)))**self.karras_p 
             for i in (range(S + 1))
         ], dim=1)
 
