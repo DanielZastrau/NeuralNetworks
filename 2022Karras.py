@@ -355,7 +355,7 @@ if __name__ == '__main__':
     parser.add_argument('--S', type=int, default=50)
     args = parser.parse_args()
 
-    model = EDM(S=S)
+    model = EDM(S=args.S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
