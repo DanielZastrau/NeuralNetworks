@@ -9,6 +9,7 @@ import torch
 import torch_fidelity
 
 from Cluster.utils.dataHandling import DataProvider
+from Cluster.utils.dataAugmentation import KarrasAugmentationPipeline
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 
 class GenerativeModel(Protocol):
@@ -18,22 +19,35 @@ class GenerativeModel(Protocol):
     S: int
     model: torch.nn.Module
     score_save_path: str
+    augmentation_pipeline: KarrasAugmentationPipeline    # only in the karras model
+
+    def sigma(self, t: float | torch.Tensor) -> float | torch.Tensor:
+        ...
+
+    def weight(self, t: torch.Tensor) -> torch.Tensor:
+        ...
 
     def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...
 
-    def model_fn(self, model: torch.nn.Module, t: torch.Tensor, x: torch.Tensor, aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x: torch.Tensor, aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
         ...
 
     def get_model(self) -> None:
         ...
 
     def sample(self, model: torch.nn.Module, amount: int) -> torch.Tensor:
-        ...    
+        ...
+
+    def get_karras_schedule(self):
+        ...
+
+    def get_karras_schedule_betw_tensors(self, S: int, t_min: torch.Tensor, t_max: torch.Tensor) -> torch.Tensor:
+        ...
 
 class Distillation():
 
-    def __init__(self, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module, student_steps: int = 100, teacher_substeps: int = 100):
+    def __init__(self, which: str, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module, student_steps: int = 100, teacher_substeps: int = 100):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -41,9 +55,10 @@ class Distillation():
             training_batch_size = 128, eval_num_samples = 50_000,
         ))
 
-        self.student = student
-        self.teacher = teacher
+        self.which = which
         self.model = model
+        self.teacher = teacher
+        self.student = student
 
         self.student_steps = student_steps
         self.teacher_substeps = teacher_substeps
@@ -80,7 +95,12 @@ class Distillation():
 
         dt_student = (1 - self.epsilon) / self.student_steps
         dt_teacher = dt_student / self.teacher_substeps
-        t_endpoints = torch.linspace(1, self.epsilon + dt_student, self.student_steps, device=self.device, dtype=torch.float32)
+
+        if 'Karras' in self.which:
+            self.model.S = self.student_steps
+            self.t_endpoints = torch.tensor(self.model.get_karras_schedule(), device=self.device, dtype=torch.float32)
+        else:
+            self.t_endpoints = torch.linspace(1, self.epsilon + dt_student, self.student_steps, device=self.device, dtype=torch.float32)
 
         train_dl, _ = self.data.get_datasets_for_training()
         train_iter = iter(train_dl)
@@ -102,23 +122,28 @@ class Distillation():
             self.student.train()
             self.ema.train()
 
-            n = torch.randint(0, self.student_steps, (x0.shape[0],), device=self.device)
-            t = t_endpoints[n]
+            if 'Karras' in self.which:
+                loss = self.update_karras(x0=x0)
 
-            xt, _ = self.model.noisify(t=t, x0=x0)
+            else:
+                n = torch.randint(0, self.student_steps, (x0.shape[0],), device=self.device)
+                t = self.t_endpoints[n]
 
-            #? Euler stepping with the teacher
-            with torch.no_grad():
-                xtarget = xt.clone()
-                for step in range(self.teacher_substeps):
-                    tprime = t - step * dt_teacher
-                    xtarget = xtarget - dt_teacher * self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=None)
+                xt, _ = self.model.noisify(t=t, x0=x0)
 
-            #? Euler stepping with the student
-            xpred = xt.clone()
-            xpred = xpred - dt_student * self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=None)
+                #? Euler stepping with the teacher
+                with torch.no_grad():
+                    xtarget = xt.clone()
+                    for step in range(self.teacher_substeps):
+                        tprime = t - step * dt_teacher
+                        xtarget = xtarget - dt_teacher * self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=None)
 
-            loss = torch.nn.functional.mse_loss(xpred, xtarget)
+                #? Euler stepping with the student
+                xpred = xt.clone()
+                xpred = xpred - dt_student * self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=None)
+
+                loss = torch.nn.functional.mse_loss(xpred, xtarget)
+
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
@@ -133,6 +158,96 @@ class Distillation():
                 uncompiled_model = getattr(self.ema.module, "_orig_mod", self.ema.module)
                 torch.save(uncompiled_model.state_dict(), self.student_save_path)
                 print(f"saved student model to:  {self.student_save_path}    at iteration {iteration}")
+
+    def update_karras(self, x0: torch.Tensor):
+
+        x0_aug, aug_cond = self.model.augmentation_pipeline(x0)
+
+        # we have the student karras schedule from which we first need to sample endpoints
+        n = torch.randint(0, self.student_steps, (x0.shape[0],), device=self.device)
+
+        # Karras schedule is decreasing. Therefore, ti > tip
+        student_ti = self.t_endpoints[n]
+        student_tip = self.t_endpoints[n + 1]
+        dt = student_ti - student_tip
+
+        xt, _ = self.model.noisify(student_ti, x0=x0_aug)
+
+        # [B, teacher_substeps + 1]
+        teacher_endpoints: torch.Tensor = self.model.get_karras_schedule_betw_tensors(S = self.teacher_substeps, t_min=student_tip, t_max=student_ti)
+        with torch.no_grad():
+            xtarget = xt.clone()
+
+            for i in range(self.teacher_substeps):
+            
+                ti = teacher_endpoints[:, i]
+                tip = teacher_endpoints[:, i + 1]
+
+                sigma_ti = self.model.sigma(ti)
+                sigma_tip = self.model.sigma(tip)
+
+                assert isinstance(sigma_ti, torch.Tensor)
+                assert isinstance(sigma_tip, torch.Tensor)    # This exists to satisfy my type checker that sigma_tip is in fact a tensor
+
+                sigma_ti_bc = sigma_ti.view(-1, *([1] * (x0.dim() - 1)))
+                sigma_tip_bc = sigma_tip.view(-1, *([1] * (x0.dim() - 1)))
+
+                diff = tip - ti
+                diff_bc = diff.view(-1, *([1] * (x0.dim() - 1)))
+
+                # ? pfode evaluation at the current timestep
+                pred_ti = self.model.model_fn(model=self.teacher, x=xtarget, t=sigma_ti, aug_cond=aug_cond)
+                dt = ( 1 / sigma_ti_bc) * xtarget - (1 / sigma_ti_bc) * pred_ti
+
+                # ? Euler step
+                x_intermediate = xtarget + diff_bc * dt
+
+                # ? Second order correction
+                mask = (sigma_tip != 0).float().view(-1, *([1] * (x0.dim() - 1)))
+                if mask.any():
+                    safe_sig_tip = torch.where(sigma_tip_bc == 0, torch.ones_like(sigma_tip_bc, device=self.device), sigma_tip_bc)
+                    
+                    pred_tip = self.model.model_fn(model=self.teacher, t=sigma_tip, x=x_intermediate, aug_cond=aug_cond)
+                    dtprime = (1 / safe_sig_tip) * x_intermediate - (1 / safe_sig_tip) * pred_tip
+                    
+                    xtarget = xtarget + diff_bc * (0.5 * dt + 0.5 * dtprime) * mask + diff_bc * dt * (1 - mask)
+                else:
+                    xtarget = x_intermediate
+
+        # 6. Student Integration (Single Heun Step)
+        xpred = xt.clone()
+
+        student_sigma_ti = self.model.sigma(t=student_ti)
+        student_sigma_tip = self.model.sigma(t=student_tip)
+
+        assert isinstance(student_sigma_ti, torch.Tensor)
+        assert isinstance(student_sigma_tip, torch.Tensor)
+
+        student_sigma_ti_bc = student_sigma_ti.view(-1, *([1] * (x0.dim() - 1)))
+        student_sigma_tip_bc = student_sigma_tip.view(-1, *([1] * (x0.dim() - 1)))
+
+        student_diff = student_tip - student_ti
+        student_diff_bc = student_diff.view(-1, *([1] * (x0.dim() - 1)))
+        
+        # Evaluate student at student_ti
+        pred_student_ti = self.model.model_fn(model=self.student, t=student_ti, x=xpred, aug_cond=aug_cond)
+        dt_student = (1 / student_sigma_ti_bc) * xpred - (1 / student_sigma_ti_bc) * pred_student_ti
+        
+        x_inter_student = xpred + student_diff_bc * dt_student
+        
+        mask_student = (student_tip != 0).float().view(-1, *([1] * (x0.dim() - 1)))
+        if mask_student.any():
+            safe_sig_tip_stud = torch.where(student_sigma_tip_bc == 0, torch.ones_like(student_sigma_tip_bc, device=self.device), student_sigma_tip_bc)
+            
+            pred_student_tip = self.model.model_fn(model=self.student, t=student_tip, x=x_inter_student, aug_cond=aug_cond)
+            dtprime_student = (1 / safe_sig_tip_stud) * x_inter_student - (1 / safe_sig_tip_stud) * pred_student_tip
+            
+            xpred = xpred + student_diff_bc * (0.5 * dt_student + 0.5 * dtprime_student) * mask_student + student_diff_bc * dt_student * (1 - mask_student)
+        else:
+            xpred = x_inter_student
+
+        weight = self.model.weight(student_ti).view(-1, *([1] * (x0.dim() - 1)))
+        return (weight * torch.nn.functional.mse_loss(xpred, xtarget, reduction='none')).mean()
 
     def eval(self):
 
@@ -182,8 +297,14 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
-        Distillery = Distillation(model=model, student=student, teacher=teacher, student_steps=args.student_steps, teacher_substeps=args.teacher_substeps)
+    else:    # args.which == '2022Karras':
+        karras_module = importlib.import_module('2022Karras')
+        model = karras_module.EDM(S=18, load_teacher=True)
 
+        teacher = model.model
+        student = copy.deepcopy(teacher)
+
+    Distillery = Distillation(which = args.which, model=model, student=student, teacher=teacher, student_steps=args.student_steps, teacher_substeps=args.teacher_substeps)
     if args.what == 'full' or args.what == 'train':
         Distillery.routine()
 

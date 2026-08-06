@@ -14,7 +14,7 @@
 
 # Related repositories
 
-
+For the logs of the training runs see [Link](https://github.com/DanielZastrau/Logs)
 
 ### Good to have
 

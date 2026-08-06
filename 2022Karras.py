@@ -26,6 +26,7 @@ class EDM():
         Min 2k fid with S=50:    26.1
         50k fid with S=50:    2.65
         50k fid with S=18:    2.58
+        50k fid with S=8:    4.76
 
     Their best 50k fid with S=18:    ~1.98
 
@@ -38,9 +39,13 @@ class EDM():
         - Because we train with a smaller batch size, we also have to adjust their learning rate by the same factor of 4.
                 Down from 1e-3 to 2.5e-4
 
+    Noteworthy:
+        - Even though time is called sigma in their model, I specified the model_fn function with parameter t, for uniformity
+                with the other frameworks in the distillation algorithm 
+
     """
 
-    def __init__(self, S: int = 50):
+    def __init__(self, S: int = 18, load_teacher: bool = False):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.data = DataProvider(args=argparse.Namespace(
@@ -73,6 +78,8 @@ class EDM():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
+        self.curr_dir = self.base
+
         self.grid_path = os.path.join(self.base, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
@@ -80,7 +87,12 @@ class EDM():
         self.best_score = 10_000.0
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
 
-    def sigma(self, t: float):
+        if load_teacher:
+
+            self.get_model()
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
+    def sigma(self, t: float | torch.Tensor):
 
         return t
 
@@ -104,17 +116,17 @@ class EDM():
 
         return ((sigma**2 + self.sigma_data**2) / (sigma * self.sigma_data)**2).to(self.device)
 
-    def D_fn(self, model: torch.nn.Module, x: torch.Tensor, sigma: torch.Tensor | float, aug_cond: torch.Tensor | None):
+    def model_fn(self, model: torch.nn.Module, x: torch.Tensor, t: torch.Tensor | float, aug_cond: torch.Tensor | None):
 
-        if isinstance(sigma, float):
-            sigma = torch.full((x.shape[0],), sigma, dtype=torch.float32, device=self.device)
+        if isinstance(t, float):
+            t = torch.full((x.shape[0],), t, dtype=torch.float32, device=self.device)
 
-        sigma_bc = sigma.view(-1, *([1] * (x.dim() - 1)))
+        sigma_bc = t.view(-1, *([1] * (x.dim() - 1)))
         
         cin = self.c_in(sigma=sigma_bc)
         cskip = self.c_skip(sigma=sigma_bc)
         cout = self.c_out(sigma=sigma_bc)
-        cnoise = self.c_noise(sigma=sigma).flatten()
+        cnoise = self.c_noise(sigma=t).flatten()
 
         active_model = getattr(model, "module", model)
 
@@ -136,6 +148,16 @@ class EDM():
             (self.sigma_max**(1/self.karras_p) + (i / (self.S - 1)) * (self.sigma_min**(1/self.karras_p) - self.sigma_max**(1/self.karras_p)))**self.karras_p 
             for i in (range(self.S))
         ] + [0.0]
+
+        return t_values
+
+    def get_karras_schedule_betw_tensors(self, S: int, t_min: torch.Tensor, t_max: torch.Tensor) -> torch.Tensor:
+        """This is only used in the distillation algorithm."""
+
+        t_values = torch.stack([
+            (t_max**(1/self.karras_p) + (i / S) * (t_min**(1/self.karras_p) - t_max**(1/self.karras_p)))**self.karras_p 
+            for i in (range(S + 1))
+        ], dim=1)
 
         return t_values
 
@@ -163,17 +185,26 @@ class EDM():
                                             end_factor=1.0,
                                             total_iters=self.lr_warmup)
 
+    def noisify(self, sigma: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+
+        sigma_bc = sigma.view(-1, *([1] * (x0.dim() - 1)))
+
+        z = torch.randn_like(x0, device=self.device) * sigma_bc
+        xt = x0 + z
+
+        return xt, z
+
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
         x0_aug, aug_cond = self.augmentation_pipeline(x0)
 
+        # this acts as the time tensor, which in other models would be drawn with t = torch.rand or something
         sigma = torch.exp(torch.randn((x0.shape[0],), device=self.device) * self.P_std + self.P_mean)
         sigma_bc = sigma.view(-1, *([1] * (x0.dim() - 1)))
 
-        z = torch.randn_like(x0, device=self.device) * sigma_bc
-        xt = x0_aug + z
+        xt, _ = self.noisify(sigma=sigma, x0=x0_aug)
 
-        pred = self.D_fn(model=model, x=xt, sigma=sigma, aug_cond=aug_cond)
+        pred = self.model_fn(model=model, x=xt, t=sigma, aug_cond=aug_cond)
         weight = self.weight(sigma_bc)
 
         return (weight * torch.nn.functional.mse_loss(pred, x0_aug, reduction='none')).mean()
@@ -207,14 +238,14 @@ class EDM():
                     diff = tip - ti
 
                     # ? pfode evaluation at the current timestep
-                    dt = ( 1 / sigma_ti ) * xt - (1 / sigma_ti) * self.D_fn(model=model, x=xt, sigma=sigma_ti, aug_cond=None)
+                    dt = ( 1 / sigma_ti ) * xt - (1 / sigma_ti) * self.model_fn(model=model, x=xt, t=sigma_ti, aug_cond=None)
 
                     # ? Euler step
                     x_intermediate = xt + diff * dt
 
                     # ? Second order correction
                     if sigma_tip != 0:
-                        dtprime = ( 1 / sigma_tip ) * x_intermediate - (1 / sigma_tip) * self.D_fn(model=model, x=x_intermediate, sigma=sigma_tip, aug_cond=None)
+                        dtprime = ( 1 / sigma_tip ) * x_intermediate - (1 / sigma_tip) * self.model_fn(model=model, x=x_intermediate, t=sigma_tip, aug_cond=None)
 
                         xt = xt + diff * (0.5 * dt + 0.5 * dtprime)
 
@@ -355,7 +386,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
-    parser.add_argument('--S', type=int, default=50)
+    parser.add_argument('--S', type=int, default=18)
     args = parser.parse_args()
 
     model = EDM(S=args.S)
