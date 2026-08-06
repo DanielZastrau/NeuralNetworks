@@ -25,7 +25,7 @@ class EDM():
     Our implementation:
         Min 2k fid with S=50:    26.1
         50k fid with S=50:    2.65
-        50k fid with S=18:    
+        50k fid with S=18:    2.58
 
     Their best 50k fid with S=18:    ~1.98
 
@@ -179,6 +179,8 @@ class EDM():
         return (weight * torch.nn.functional.mse_loss(pred, x0_aug, reduction='none')).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        print(f'Sampling with    {self.S}  many steps.')
 
         samples = []
 
