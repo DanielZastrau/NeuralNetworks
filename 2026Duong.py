@@ -50,8 +50,11 @@ class Kac():
             best 2k fid with S=100:    28.71
             best 50k fid with S=100:    5.62
         after 800k iterations
-            best 2k fid with S=100:    28.03
+            best 2k fid with S=100:    28.35
             best 50k fid with S=100:    5.09
+        after 1.2M iterations
+            best 2k fid with S=100:    28.35
+            best 50k fid with S=100:    4.91
 
 
     Other results
