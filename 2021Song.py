@@ -293,7 +293,7 @@ class DDPMppCont():
 
         eval_ds = self.data.get_dataset_for_full_eval()
 
-        model.eval()
+        self.model.eval()
         samples = self.sample(model=self.model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
