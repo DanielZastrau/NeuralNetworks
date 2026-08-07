@@ -42,7 +42,7 @@ class DSBFM():
                 Therefore, we scale the network predictions to a stable range, by pulling out the divergent factor.
     """
 
-    def __init__(self, which: str = 'simple'):
+    def __init__(self, which: str = 'simple', S: int = 1_024):
 
         self.which = which
 
@@ -56,7 +56,7 @@ class DSBFM():
         self.augmentation_pipeline = KarrasAugmentationPipeline()
 
         self.I = 400_000    # amount of training iterations
-        self.S = 1_024    # amount of sampling steps
+        self.S = S    # amount of sampling steps
         self.lr = 2e-4
         self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
@@ -91,7 +91,6 @@ class DSBFM():
     def weight(self, t: torch.Tensor):
 
         return (4 * t * (1 - t)**2) / ((1 + t) ** 2)
-
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
 
@@ -168,6 +167,8 @@ class DSBFM():
         return (torch.nn.functional.mse_loss(pred_v_scaled, target_v_scaled, reduction='none') * weight).mean()
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        print(f'Sampling with    {self.S}  many steps.')
 
         samples = []
 
@@ -333,9 +334,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
     parser.add_argument('--which', type=str, default='simple', choices=['simple', 'augmented'])
+    parser.add_argument('--S', type=int, default=1_024)
     args = parser.parse_args()
 
-    model = DSBFM(which=args.which)
+    model = DSBFM(which=args.which, S=args.S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 

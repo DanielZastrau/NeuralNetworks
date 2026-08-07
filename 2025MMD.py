@@ -31,12 +31,14 @@ class MMD():
         50k fid with S=171:    ~8.71
         50k fid with S=128:    ~10.32
         50k fid with S=103:    ~12.46
+        50k fid with S=52:    ~26.14
 
     Distillation results:
         50k fid with 2x distill / S=256:
         50k fid with 3x distill / S=171:
         50k fid with 4x distill / S=128:
         50k fid with 5x distill / S=103:
+        50k fid with 10x distill / S=52:
 
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...

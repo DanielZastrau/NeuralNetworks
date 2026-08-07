@@ -28,6 +28,12 @@ class DDPMppCont():
         50k fid with S=74:    4.20
         50k fid with S=50:    6.10
 
+        50k fid with S=90:    3.93    <<<    Baseline
+        50k fid with S=45:    7.16
+        50k fid with S=30:    13.91
+        50k fid with S=23:    22.63
+        50k fid with S=18:    34.85
+
     Thoughts:
         - Since fid score with 205 sampling steps was better than fid score with 1_024 sampling steps, we search even lower. Originally,
                 only wanted to have these evaluations for comparison with distilled step counts, but apparently I first have to find the
