@@ -15,17 +15,11 @@ from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 class GenerativeModel(Protocol):
     """This exists to satisfy the type checker for the Distillation class"""
 
+    # ! needed on all
     curr_dir: str
     S: int
     model: torch.nn.Module
     score_save_path: str
-    augmentation_pipeline: KarrasAugmentationPipeline    # only in the karras model
-
-    def sigma(self, t: float | torch.Tensor) -> float | torch.Tensor:
-        ...
-
-    def weight(self, t: torch.Tensor) -> torch.Tensor:
-        ...
 
     def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...
@@ -39,10 +33,27 @@ class GenerativeModel(Protocol):
     def sample(self, model: torch.nn.Module, amount: int) -> torch.Tensor:
         ...
 
+    # ! specific to the individual models
+    augmentation_pipeline: KarrasAugmentationPipeline    # used by Karras and duong augmented
+
+    # used by karras
     def get_karras_schedule(self):
         ...
 
+    # used by karras
     def get_karras_schedule_betw_tensors(self, S: int, t_min: torch.Tensor, t_max: torch.Tensor) -> torch.Tensor:
+        ...
+
+    # used by song
+    def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module, graph: bool = False) -> torch.Tensor:
+        ...
+
+    # used by karras
+    def sigma(self, t: float | torch.Tensor) -> float | torch.Tensor:
+        ...
+
+    # used by karras
+    def weight(self, t: torch.Tensor) -> torch.Tensor:
         ...
 
 class Distillation():
@@ -136,11 +147,21 @@ class Distillation():
                     xtarget = xt.clone()
                     for step in range(self.teacher_substeps):
                         tprime = t - step * dt_teacher
-                        xtarget = xtarget - dt_teacher * self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=None)
+
+                        if self.which == '2021Song':
+                            v = self.model.v(t=tprime, x=xtarget, model=self.teacher)
+                        else:
+                            v = self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=None)
+                        xtarget = xtarget - dt_teacher * v
 
                 #? Euler stepping with the student
                 xpred = xt.clone()
-                xpred = xpred - dt_student * self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=None)
+
+                if self.which == '2021Song':
+                    v = self.model.v(t=t, x=xpred, model=self.student, graph=True)
+                else:
+                    v = self.model.model_fn(model=self.teacher, t=t, x=xtarget, aug_cond=None)
+                xpred = xpred - dt_student * v
 
                 loss = torch.nn.functional.mse_loss(xpred, xtarget)
 
@@ -286,7 +307,7 @@ if __name__=='__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, default='full', choices=['full', 'distill', 'eval'])
-    parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2025Mmd', '2026Zastrau', '2022Karras'])
+    parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2025Mmd', '2026Zastrau', '2022Karras', '2021Song'])
     parser.add_argument('--student-steps', type=int, required=True)
     parser.add_argument('--teacher-substeps', type=int, required=True)
     args = parser.parse_args()
@@ -297,9 +318,16 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
-    else:    # args.which == '2022Karras':
+    elif args.which == '2022Karras':
         karras_module = importlib.import_module('2022Karras')
         model = karras_module.EDM(S=18, load_teacher=True)
+
+        teacher = model.model
+        student = copy.deepcopy(teacher)
+
+    elif args.which == '2021Song':
+        song_module = importlib.import_module('2021Song')
+        model = song_module.DDPMppCont(load_teacher=True)
 
         teacher = model.model
         student = copy.deepcopy(teacher)

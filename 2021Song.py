@@ -19,9 +19,15 @@ class DDPMppCont():
     Our achieved 50k FID score with 1_024 steps:    4.02
     Our minimum 2k FID score with 1_024 steps:    27.3
     
-    This takes like 4 days to finish."""
+    Fewer sampling steps:
+        50k fid with S=512:    
+        50k fid with S=342:    
+        50k fid with S=256:    
+        50k fid with S=205:    
 
-    def __init__(self, S: int = 1_024):
+    The training takes like 4 days to finish."""
+
+    def __init__(self, S: int = 1_024, load_teacher: bool = False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -43,12 +49,19 @@ class DDPMppCont():
         if not os.path.exists(self.base):
             os.mkdir(self.base)
 
+        self.curr_dir = self.base
+
         self.grid_path = os.path.join(self.base, 'grids')
         if not os.path.exists(self.grid_path):
             os.mkdir(self.grid_path)
 
         self.best_score = 10_000.0
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
+
+        if load_teacher:
+
+            self.get_model()
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
 
     def beta(self, t: torch.Tensor) -> torch.Tensor:
 
@@ -68,10 +81,14 @@ class DDPMppCont():
         zeroes = torch.zeros(1, device=self.device)
         return torch.exp(- 0.5 * (t * self.beta(zeroes) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
-    def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module) -> torch.Tensor:
+    def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module, graph: bool = False) -> torch.Tensor:
 
         variance = torch.sqrt(1 - self.b(t, x)**2)
-        with torch.no_grad():
+
+        if not graph:
+            with torch.no_grad():
+                pred_noise = model(x, t)
+        else:
             pred_noise = model(x, t)
 
         return self.f(t, x) - 0.5 * self.g(t, x)**2 * (pred_noise / variance)
@@ -80,20 +97,30 @@ class DDPMppCont():
     def get_model(self):
 
         #! the network natively implements group normalization
-        return UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
+        self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
                          model_channels=128, channel_mult=(1, 2, 2, 2),
                          num_res_blocks=4, attention_resolutions=(2,),
                          dropout=0.1, use_scale_shift_norm=True,
                          resblock_updown=True, use_new_attention_order=True,
                          use_rff=True, rff_scale=16.0).to(self.device)
 
-    def get_ema(self, model: torch.nn.Module):
+    def get_ema(self):
 
-        return torch.optim.swa_utils.AveragedModel(model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999))
+        self.ema = torch.optim.swa_utils.AveragedModel(self.model, device=self.device, multi_avg_fn=torch.optim.swa_utils.get_ema_multi_avg_fn(decay=0.9999))
 
-    def get_optim(self, model: torch.nn.Module):
+    def get_optim(self):
 
-        return torch.optim.Adam(model.parameters(), lr=2e-4)
+        self.optim = torch.optim.Adam(self.model.parameters(), lr=2e-4)
+
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor):
+
+        z = torch.randn_like(x0, device=self.device, dtype=torch.float32)
+
+        mean = self.b(t, x0)
+        variance_sq = 1 - mean**2
+        variance = torch.sqrt(variance_sq)
+
+        return mean * x0 + variance * z, z
 
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
         """The 'score prediction' target algebraically reduces to the noise prediction target."""
@@ -101,13 +128,7 @@ class DDPMppCont():
         t = torch.rand((x0.shape[0],), device=self.device)
         t = torch.clamp(t, min=1e-5)
 
-        z = torch.randn_like(x0, device=self.device)
-
-        mean = self.b(t, x0)
-        variance_sq = 1 - mean**2
-        variance = torch.sqrt(variance_sq)
-
-        xt = mean * x0 + variance * z
+        xt, z = self.noisify(t=t, x0=x0)
         
         pred_noise = model(xt, t)
         target_noise = -z
@@ -153,9 +174,9 @@ class DDPMppCont():
 
     def train(self):
 
-        model = self.get_model()
-        ema = self.get_ema(model=model)
-        optim = self.get_optim(model=model)
+        self.get_model()
+        self.get_ema()
+        self.get_optim()
 
         train_dl, test_dl = self.data.get_datasets_for_training()
         eval_dl = self.data.get_dataset_for_periodic_eval()
@@ -173,31 +194,31 @@ class DDPMppCont():
                 x0, _ = next(train_iter)
                 x0 = x0.to(self.device, dtype=torch.float32)
 
-            model.train()
-            ema.train()
+            self.model.train()
+            self.ema.train()
 
-            optim.zero_grad()
+            self.optim.zero_grad()
 
-            loss = self.loss(model=model, x0=x0)
+            loss = self.loss(model=self.model, x0=x0)
             print(f'Loss:  {loss.item()}')
             loss.backward()
 
-            grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
             print(f'Grad norm: {grad_norm.item()}')
 
-            optim.step()
-            ema.update_parameters(model)
+            self.optim.step()
+            self.ema.update_parameters(self.model)
 
 
             if iteration % 5000 == 0:
-                ema.eval()
+                self.ema.eval()
                 loss = 0
 
                 with torch.no_grad():
                     for x0, _ in test_dl:
                         x0 = x0.to(self.device)
 
-                        loss += self.loss(model=ema, x0=x0).detach()
+                        loss += self.loss(model=self.ema, x0=x0).detach()
 
                 avg_loss = loss.item() / len(test_dl)
                 print(f'>>>>>>>>>> avg test loss:    {avg_loss}')
@@ -205,9 +226,9 @@ class DDPMppCont():
 
             # regularly sample a small grid to check progress
             if (iteration + 1) % 10_000 == 0:
-                ema.eval()
+                self.ema.eval()
     
-                samples = self.sample(model=ema, amount=64)    # are [-1, 1]
+                samples = self.sample(model=self.ema, amount=64)    # are [-1, 1]
                 samples = (samples + 1.0) * 0.5    # now [0, 1]
                 samples = samples.clamp(0.0, 1.0)    # for good measure
 
@@ -224,8 +245,8 @@ class DDPMppCont():
 
             if (iteration + 1) % 50_000 == 0:
 
-                ema.eval()
-                samples = self.sample(model=ema, amount=2_000)
+                self.ema.eval()
+                samples = self.sample(model=self.ema, amount=2_000)
 
                 gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -244,7 +265,7 @@ class DDPMppCont():
                 if ema_score < self.best_score:
                     self.best_score = ema_score
 
-                    uncompiled_model = getattr(ema.module, "_orig_mod", ema.module)
+                    uncompiled_model = getattr(self.ema.module, "_orig_mod", self.ema.module)
                     torch.save(uncompiled_model.state_dict(), self.score_save_path)
                     print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
@@ -253,13 +274,13 @@ class DDPMppCont():
         # ! Final Fid evaluation on 50_000 samples
 
         # Load the best model
-        model = self.get_model()
-        model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+        self.get_model()
+        self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
 
         eval_ds = self.data.get_dataset_for_full_eval()
 
         model.eval()
-        samples = self.sample(model=model, amount=50_000)
+        samples = self.sample(model=self.model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
