@@ -42,8 +42,9 @@ class Kac():
             50k FId with S=20:    38.4
 
     Distilling 50k FID results:
-        Base model 2x:    5.1    >    5.6
-        Base model 3x:    5.1    >    5.8
+        Base model 2x:    5.1    >    5.61
+        Base model 3x:    5.1    >    5.82
+        Base model 4x:    5.1    >    5.79
             
     Augmented model + Euler integrator + uniform schedule
         after 400k iterations

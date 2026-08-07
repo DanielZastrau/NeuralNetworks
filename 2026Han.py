@@ -160,7 +160,7 @@ class Distillation():
                 if self.which == '2021Song':
                     v = self.model.v(t=t, x=xpred, model=self.student, graph=True)
                 else:
-                    v = self.model.model_fn(model=self.teacher, t=t, x=xtarget, aug_cond=None)
+                    v = self.model.model_fn(model=self.student, t=t, x=xtarget, aug_cond=None)
                 xpred = xpred - dt_student * v
 
                 loss = torch.nn.functional.mse_loss(xpred, xtarget)

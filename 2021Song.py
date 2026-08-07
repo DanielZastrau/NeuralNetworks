@@ -22,10 +22,16 @@ class DDPMppCont():
     Fewer sampling steps:
         50k fid with S=512:    
         50k fid with S=342:    
-        50k fid with S=256:    
-        50k fid with S=205:    
+        50k fid with S=256:    3.81
+        50k fid with S=205:    3.7
+        50k fid with S=103: 
 
-    The training takes like 4 days to finish."""
+    Thoughts:
+        - Since fid score with 205 sampling steps was better than fid score with 1_024 sampling steps, we search even lower. Originally,
+                only wanted to have these evaluations for comparison with distilled step counts, but apparently I first have to find the
+                baseline.
+        - The training takes like 4 days to finish.
+    """
 
     def __init__(self, S: int = 1_024, load_teacher: bool = False):
 
@@ -136,6 +142,8 @@ class DDPMppCont():
         return torch.nn.functional.mse_loss(pred_noise, target_noise)
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        print(f'Sampling with    {self.S}  many steps.')
 
         samples = []
 

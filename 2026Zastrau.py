@@ -24,9 +24,13 @@ class DSBFM():
             Min 2k FID at 400k iterations:    ~34 @ 150k iterations  >  after that followed degradation
             50k FID:    10.9
     [02.08.26]    Run: zastrau4    Added Karras augmentation to fight the degradation / overfitting
-            Min 2k FID at 400k iterations:    ~33 ~ 400k iterationos
+            Min 2k FID at 400k iterations:    ~33.2
             50k FID:    9.2
     [03.08.26]    Run: zastrau5    Added prediction scaling similar to what Karras did
+            Min 2k FID at 400k iterations:    ~32.8
+            50k FID:    9.3
+        
+    I have some further ideas what one could do to improve generative performance, but I am kinda over it.
 
     
     Thoughts:
