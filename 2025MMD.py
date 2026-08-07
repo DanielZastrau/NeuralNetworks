@@ -22,6 +22,10 @@ class MMD():
         Min 2k FID with S=1_024:    ~29.04
         50k FID with S=1_024:    ~6.4
     
+    With smaller model and data augmentation:
+        Min 2k FID with S=1_024:    ~29.5
+        50k FID with S=1_024:    ~6.3
+
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
         Min 50k FID with S=1_024:    5.4

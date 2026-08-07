@@ -15,19 +15,20 @@ class DDPMppCont():
     The prediction target is given by Eq. (7) and we use the probability flow ODE for sampling with a final application of Tweedie's formula.
     
     Their reported 50k FID score:  ~3.25 with 2_000 steps,  and ~3.59 with 1_000 steps
+    
     Our achieved 50k FID score with 1_024 steps:    4.02
     Our minimum 2k FID score with 1_024 steps:    27.3
     
     This takes like 4 days to finish."""
 
-    def __init__(self):
+    def __init__(self, S: int = 1_024):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.beta0 = 0.1
         self.beta1 = 20
 
-        self.T = 1_024
+        self.S = S
 
         self.data = DataProvider(args=argparse.Namespace(
             training_batch_size = 128, eval_num_samples = 50_000,
@@ -127,9 +128,9 @@ class DDPMppCont():
                               device=self.device,
                               dtype=torch.float32)
 
-            dt = (1 - 1e-3) / self.T
+            dt = (1 - 1e-3) / self.S
             xt = xT
-            for j in range(self.T):
+            for j in range(self.S):
 
                 t = 1 - j * dt
                 t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=self.device)
@@ -278,9 +279,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, choices=['full', 'train', 'eval'], default='full')
+    parser.add_argument('--S', type=int, default=1_024)
     args = parser.parse_args()
 
-    model = DDPMppCont()
+    model = DDPMppCont(S=args.S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
