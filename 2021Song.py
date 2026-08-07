@@ -35,6 +35,8 @@ class DDPMppCont():
 
     def __init__(self, S: int = 1_024, load_teacher: bool = False):
 
+        print('Got into the initialization')
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         self.beta0 = 0.1
@@ -68,6 +70,8 @@ class DDPMppCont():
 
             self.get_model()
             self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
+        print(f'Finished initialization.')
 
     def beta(self, t: torch.Tensor) -> torch.Tensor:
 
@@ -278,7 +282,9 @@ class DDPMppCont():
                     print(f"saved best score model to:  {self.score_save_path},    score {ema_score}")
 
     def eval(self):
-                    
+
+        print('Got into the eval.')
+        
         # ! Final Fid evaluation on 50_000 samples
 
         # Load the best model
@@ -311,9 +317,13 @@ if __name__ == '__main__':
     parser.add_argument('--S', type=int, default=1_024)
     args = parser.parse_args()
 
+    print('Parsed the args.')
+
     model = DDPMppCont(S=args.S)
     if args.what == 'full' or args.what == 'train':
+        print('Stepped into training clause.')
         model.train()
 
     if args.what == 'full' or args.what == 'eval':
+        print('Stepped into eval clause.')
         model.eval()
