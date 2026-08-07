@@ -31,11 +31,19 @@ class Kac():
 
     Base model + Euler integrator + uniform schedule
         after 400k iterations
-            50k FID with S=100:    4.8
             Best 2k FID with S=100:    28.4
+            50k FID with S=100:    4.8
         after 800k iterations
-            50k FID with S=100:    5.1
             Best 2k FID with S=100:    28.1
+            50k FID with S=100:    5.1
+            50k FID with S=50:    7.4
+            50k FID with S=34:    14.7
+            50k FID with S=25:    26.0
+            50k FId with S=20:    38.4
+
+    Distilling 50k FID results:
+        Base model 2x:    5.1    >    5.6
+        Base model 3x:    5.1    >    5.8
             
     Augmented model + Euler integrator + uniform schedule
         after 400k iterations
@@ -45,25 +53,23 @@ class Kac():
             best 2k fid with S=100:    28.03
             best 50k fid with S=100:    5.09
 
-    Distilling 50k FID results:
-        Base model 2x:    5.1    >    5.6
-        Base model 3x:
 
-    Base model + Euler integrator + Karras schedule
-        50k FID with S=100:    7.1732
+    Other results
+        Base model + Euler integrator + Karras schedule
+            50k FID with S=100:    7.1732
 
-    Base model + Heun integrator + uniform schedule
-        50k FID with S=50:    9.1535
-        50k FID with S=100:    4.8
+        Base model + Heun integrator + uniform schedule
+            50k FID with S=50:    9.1535
+            50k FID with S=100:    4.8
 
-    Base model + Midpoint integrator + uniform schedule
-        50k FID with S=100:    5.79
+        Base model + Midpoint integrator + uniform schedule
+            50k FID with S=100:    5.79
 
-    Base model + AB2 integrator + uniform schedule
-        50k FID with S=100:    5.8
+        Base model + AB2 integrator + uniform schedule
+            50k FID with S=100:    5.8
 
-    Base model + Heun integrator + Karras schedule
-        50k FID with S=50:    10.8887
+        Base model + Heun integrator + Karras schedule
+            50k FID with S=50:    10.8887
 
     Thoughts:
         - Karras schedule seem to yield worse results
@@ -71,9 +77,6 @@ class Kac():
         - Also Euler seems to perform best in general
         - Continued training base 2 for another 400k iterations, because it did not yet converge after the first 400k
         - 2k FID is such a small metric that improvements of just 0.5 or something can also be statistical noise.
-
-    - Data augmentation    -    Base model 2
-    - Han et als model settings    -    Base model 3
 
     I mistakenly trained my models with time truncation 1e-5, but that difference is marginal, so I am gonna leave it in there.
     """

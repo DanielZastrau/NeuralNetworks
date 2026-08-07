@@ -26,7 +26,11 @@ class EDM():
         Min 2k fid with S=50:    26.1
         50k fid with S=50:    2.65
         50k fid with S=18:    2.58
+        50k fid with S=9:    3.64
         50k fid with S=8:    4.76
+        50k fid with S=6:    15.1
+        50k fid with S=5:    37.8
+        50k fid with S=4:    103.4
 
     Their best 50k fid with S=18:    ~1.98
 
