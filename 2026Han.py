@@ -24,17 +24,20 @@ class GenerativeModel(Protocol):
     def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         ...
 
-    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x: torch.Tensor, aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
-        ...
-
     def get_model(self) -> None:
         ...
 
     def sample(self, model: torch.nn.Module, amount: int) -> torch.Tensor:
         ...
 
+    # used by duong and karras
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x: torch.Tensor,
+                 aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
+        ...
+
     # ! specific to the individual models
-    augmentation_pipeline: KarrasAugmentationPipeline    # used by Karras and duong augmented
+        
+    augmentation_pipeline: KarrasAugmentationPipeline    # used by Karras, duong augmented, and mmd augmented
 
     # used by karras
     def get_karras_schedule(self):
@@ -137,10 +140,16 @@ class Distillation():
                 loss = self.update_karras(x0=x0)
 
             else:
+
+                if self.which == '2025Mmd':
+                    x0_aug, aug_cond = self.model.augmentation_pipeline(x0)
+                else:
+                    x0_aug, aug_cond = x0, None
+
                 n = torch.randint(0, self.student_steps, (x0.shape[0],), device=self.device)
                 t = self.t_endpoints[n]
 
-                xt, _ = self.model.noisify(t=t, x0=x0)
+                xt, _ = self.model.noisify(t=t, x0=x0_aug)
 
                 #? Euler stepping with the teacher
                 with torch.no_grad():
@@ -148,19 +157,12 @@ class Distillation():
                     for step in range(self.teacher_substeps):
                         tprime = t - step * dt_teacher
 
-                        if self.which == '2021Song':
-                            v = self.model.v(t=tprime, x=xtarget, model=self.teacher)
-                        else:
-                            v = self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=None)
+                        v = self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=aug_cond)
                         xtarget = xtarget - dt_teacher * v
 
                 #? Euler stepping with the student
                 xpred = xt.clone()
-
-                if self.which == '2021Song':
-                    v = self.model.v(t=t, x=xpred, model=self.student, graph=True)
-                else:
-                    v = self.model.model_fn(model=self.student, t=t, x=xtarget, aug_cond=None)
+                v = self.model.model_fn(model=self.student, t=t, x=xtarget, aug_cond=aug_cond)
                 xpred = xpred - dt_student * v
 
                 loss = torch.nn.functional.mse_loss(xpred, xtarget)
@@ -307,7 +309,7 @@ if __name__=='__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, default='full', choices=['full', 'distill', 'eval'])
-    parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2025Mmd', '2026Zastrau', '2022Karras', '2021Song'])
+    parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2026Zastrau', '2025Mmd', '2022Karras', '2021Song'])
     parser.add_argument('--student-steps', type=int, required=True)
     parser.add_argument('--teacher-substeps', type=int, required=True)
     args = parser.parse_args()
@@ -318,17 +320,21 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
+    elif args.which == '2025Mmd':
+        mmd_module = importlib.import_module('2025MMD')
+        model = mmd_module.MMD(size='small', data_augmentation=True, load_teacher=True)
+        teacher = model.model
+        student = copy.deepcopy(teacher)
+
     elif args.which == '2022Karras':
         karras_module = importlib.import_module('2022Karras')
         model = karras_module.EDM(S=18, load_teacher=True)
-
         teacher = model.model
         student = copy.deepcopy(teacher)
 
     elif args.which == '2021Song':
         song_module = importlib.import_module('2021Song')
         model = song_module.DDPMppCont(load_teacher=True)
-
         teacher = model.model
         student = copy.deepcopy(teacher)
 

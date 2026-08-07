@@ -25,13 +25,25 @@ class MMD():
     With smaller model, data augmentation and 600k iterations:
         Min 2k FID with S=1_024:    ~29.5
         50k FID with S=1_024:    ~6.3
+        
+        50k fid with S=512:    ~6.6    <<<    Baseline
+        50k fid with S=256:    ~7.41
+        50k fid with S=171:    ~8.71
+        50k fid with S=128:    ~10.32
+        50k fid with S=103:    ~12.46
+
+    Distillation results:
+        50k fid with 2x distill / S=256:
+        50k fid with 3x distill / S=171:
+        50k fid with 4x distill / S=128:
+        50k fid with 5x distill / S=103:
 
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
         Min 50k FID with S=1_024:    5.4
     """
 
-    def __init__(self, size: str = 'small', data_augmentation: bool = False, I: int = 400_000, S: int = 1_024):
+    def __init__(self, size: str = 'small', data_augmentation: bool = False, I: int = 400_000, S: int = 1_024, load_teacher: bool = False):
 
         print(f'The following model is trained:    {size}, with data augmentation?    {data_augmentation}')
 
@@ -73,6 +85,12 @@ class MMD():
 
         self.best_score = 10_000.0
         self.score_save_path = os.path.join(self.base, 'best_score_model.pth')
+
+        if load_teacher:
+
+            self.get_model()
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
 
     def f(self, t: torch.Tensor):
 
@@ -155,6 +173,18 @@ class MMD():
                                                   end_factor=1.0,
                                                   total_iters=self.lr_warmup)
 
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor):
+
+        ft = self.f(t=t).view(-1, *([1] * (x0.dim() - 1)))
+
+        # [B, C, H, W]
+        pre_z, z = self.noise(t=t, x=x0)
+
+        # [B, C, H, W]
+        xt = ft * x0 + z
+
+        return xt, pre_z
+
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
         if self.augmented:
@@ -166,16 +196,11 @@ class MMD():
         t = torch.rand((x0.shape[0],), device=self.device)
 
         # [B,]
-        ft = self.f(t=t).view(-1, *([1] * (x0.dim() - 1)))
         dft = self.df(t=t).view(-1, *([1] * (x0.dim() - 1)))
         gt = self.g(t=t).view(-1, *([1] * (x0.dim() - 1)))
         dgt = self.dg(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
-        # [B, C, H, W]
-        pre_z, z = self.noise(t=t, x=x0_aug)
-
-        # [B, C, H, W]
-        xt = ft * x0_aug + z
+        xt, pre_z = self.noisify(t=t, x0=x0_aug)
 
         pred = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
         target = dft * x0_aug + dgt * (pre_z / torch.exp(gt / self.b))
