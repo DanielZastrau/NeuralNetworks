@@ -29,9 +29,10 @@ class DSBFM():
     [03.08.26]    Run: zastrau5    Added prediction scaling similar to what Karras did
             Min 2k FID at 400k iterations:    ~32.8
             50k FID:    9.3
+
+    50k fid with S=512:
         
     I have some further ideas what one could do to improve generative performance, but I am kinda over it.
-
     
     Thoughts:
         Due to the t**(-1/2) factor in the lagrangian formulation of the velocity field, it diverges for t -> 0.

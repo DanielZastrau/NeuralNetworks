@@ -162,7 +162,7 @@ class Distillation():
 
                 #? Euler stepping with the student
                 xpred = xt.clone()
-                v = self.model.model_fn(model=self.student, t=t, x=xtarget, aug_cond=aug_cond)
+                v = self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=aug_cond)
                 xpred = xpred - dt_student * v
 
                 loss = torch.nn.functional.mse_loss(xpred, xtarget)
