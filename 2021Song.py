@@ -20,11 +20,13 @@ class DDPMppCont():
     Our minimum 2k FID score with 1_024 steps:    27.3
     
     Fewer sampling steps:
-        50k fid with S=512:    
-        50k fid with S=342:    
+        50k fid with S=512:    4.00
+        50k fid with S=342:    3.88
         50k fid with S=256:    3.81
-        50k fid with S=205:    3.7
-        50k fid with S=103: 
+        50k fid with S=205:    3.70
+        50k fid with S=103:    3.77
+        50k fid with S=74:    4.20
+        50k fid with S=50:    6.10
 
     Thoughts:
         - Since fid score with 205 sampling steps was better than fid score with 1_024 sampling steps, we search even lower. Originally,
@@ -91,15 +93,12 @@ class DDPMppCont():
         zeroes = torch.zeros(1, device=self.device)
         return torch.exp(- 0.5 * (t * self.beta(zeroes) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
-    def v(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module, graph: bool = False) -> torch.Tensor:
+    def model_fn(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module, aug_cond: None = None) -> torch.Tensor:
+        """Returns the velocity field
+        aug_cond exists for uniformity with the other modules."""
 
         variance = torch.sqrt(1 - self.b(t, x)**2)
-
-        if not graph:
-            with torch.no_grad():
-                pred_noise = model(x, t)
-        else:
-            pred_noise = model(x, t)
+        pred_noise = model(x, t)
 
         return self.f(t, x) - 0.5 * self.g(t, x)**2 * (pred_noise / variance)
 
@@ -151,36 +150,36 @@ class DDPMppCont():
 
         samples = []
 
-        for i in range((amount // 512) + 1):
-            how_many = min(512, amount - i * 512)
+        with torch.no_grad():
+            for i in range((amount // 512) + 1):
+                how_many = min(512, amount - i * 512)
 
-            xT = torch.randn((how_many,
-                              self.data.data_dims.channels,
-                              self.data.data_dims.height,
-                              self.data.data_dims.width),
-                              device=self.device,
-                              dtype=torch.float32)
+                xT = torch.randn((how_many,
+                                self.data.data_dims.channels,
+                                self.data.data_dims.height,
+                                self.data.data_dims.width),
+                                device=self.device,
+                                dtype=torch.float32)
 
-            dt = (1 - 1e-3) / self.S
-            xt = xT
-            for j in range(self.S):
+                dt = (1 - 1e-3) / self.S
+                xt = xT
+                for j in range(self.S):
 
-                t = 1 - j * dt
-                t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=self.device)
+                    t = 1 - j * dt
+                    t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=self.device)
 
-                xt = xt - self.v(t_tensor, xt, model) * dt
+                    xt = xt - self.model_fn(t_tensor, xt, model) * dt
 
-            # Final Tweedies application
-            final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=self.device)
-            final_variance = torch.sqrt(1 - self.b(final_time, xt)**2)
-            with torch.no_grad():
+                # Final Tweedies application
+                final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=self.device)
+                final_variance = torch.sqrt(1 - self.b(final_time, xt)**2)
                 final_noise_pred = model(xt, final_time)
-            xt = (xt + final_variance * final_noise_pred ) / self.b(final_time, xt)
+                xt = (xt + final_variance * final_noise_pred ) / self.b(final_time, xt)
 
 
-            if amount == 50_000:
-                print(f'sampled {i * 512 + how_many} / 50_000')
-            samples.append(xt.cpu())
+                if amount == 50_000:
+                    print(f'sampled {i * 512 + how_many} / 50_000')
+                samples.append(xt.cpu())
 
         return torch.cat(samples, dim=0)
 
