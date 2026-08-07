@@ -33,11 +33,22 @@ class DDPMppCont():
         50k fid with S=30:    13.91
         50k fid with S=23:    22.63
         50k fid with S=18:    34.85
+        50k fid with S=9:     111.19
+
+    Distillation results
+        2x / S=45:
+        3x / S=30:
+        4x / S=23:
+        5x / S=18:
+        10x / S=9:
 
     Thoughts:
         - Since fid score with 205 sampling steps was better than fid score with 1_024 sampling steps, we search even lower. Originally,
                 only wanted to have these evaluations for comparison with distilled step counts, but apparently I first have to find the
                 baseline.
+        - I have to keep in mind that neural networks introduce a second source of errors:    approximation erros. That means that if I
+                take too many sampling steps the approximation errors of the network stack up and yield worse results than sampling with
+                fewer steps.
         - The training takes like 4 days to finish.
     """
 
@@ -99,7 +110,7 @@ class DDPMppCont():
         zeroes = torch.zeros(1, device=self.device)
         return torch.exp(- 0.5 * (t * self.beta(zeroes) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
-    def model_fn(self, t: torch.Tensor, x: torch.Tensor, model: torch.nn.Module, aug_cond: None = None) -> torch.Tensor:
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor, x: torch.Tensor, aug_cond: None = None) -> torch.Tensor:
         """Returns the velocity field
         aug_cond exists for uniformity with the other modules."""
 
