@@ -18,11 +18,11 @@ class MMD():
 
     Added a config for Karras augmentation. Currently it is only added on top of the smaller model.
 
-    With the smaller model:
+    With the smaller model and 400k iterations:
         Min 2k FID with S=1_024:    ~29.04
         50k FID with S=1_024:    ~6.4
     
-    With smaller model and data augmentation:
+    With smaller model, data augmentation and 600k iterations:
         Min 2k FID with S=1_024:    ~29.5
         50k FID with S=1_024:    ~6.3
 
@@ -31,7 +31,7 @@ class MMD():
         Min 50k FID with S=1_024:    5.4
     """
 
-    def __init__(self, size: str = 'small', data_augmentation: bool = False, I: int = 400_000):
+    def __init__(self, size: str = 'small', data_augmentation: bool = False, I: int = 400_000, S: int = 1_024):
 
         print(f'The following model is trained:    {size}, with data augmentation?    {data_augmentation}')
 
@@ -54,7 +54,7 @@ class MMD():
         self.lr = 2e-4
         self.lr_warmup = int(self.I * 0.05)
         self.epsilon = 1e-5
-        self.S = 1_024    # amount of sampling steps
+        self.S = S    # amount of sampling steps
 
         self.model_channels = 128
 
@@ -344,9 +344,10 @@ if __name__ == '__main__':
     parser.add_argument('--size', type=str, default='small', choices=['small', 'medium'])
     parser.add_argument('--data-augmentation', action='store_true')
     parser.add_argument('--I', type=int, default=400_000)
+    parser.add_argument('--S', type=int, default=1_024)
     args = parser.parse_args()
 
-    model = MMD(size = args.size, data_augmentation=args.data_augmentation, I=args.I)
+    model = MMD(size = args.size, data_augmentation=args.data_augmentation, I=args.I, S=args.S)
     if args.what == 'full' or args.what == 'train':
         model.train()
 
