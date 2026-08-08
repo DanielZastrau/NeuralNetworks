@@ -111,8 +111,7 @@ class DDPMppCont():
         return torch.exp(- 0.5 * (t * self.beta(zeroes) + 0.5 * t**2 * (self.beta(ones) - self.beta(zeroes)))).view(-1, *([1] * (x.dim() - 1)))
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor, x: torch.Tensor, aug_cond: None = None) -> torch.Tensor:
-        """Returns the velocity field
-        aug_cond exists for uniformity with the other modules."""
+        """This outputs the velocity field.    aug_cond exists for uniformity with the other modules."""
 
         variance = torch.sqrt(1 - self.b(t, x)**2)
         pred_noise = model(x, t)
@@ -185,7 +184,7 @@ class DDPMppCont():
                     t = 1 - j * dt
                     t_tensor = torch.full((xt.shape[0],), t, dtype=torch.float32, device=self.device)
 
-                    xt = xt - self.model_fn(t_tensor, xt, model) * dt
+                    xt = xt - dt * self.model_fn(model=model, t=t_tensor, x=xt)
 
                 # Final Tweedies application
                 final_time = torch.full((xt.shape[0],), 1e-3, dtype=torch.float32, device=self.device)
