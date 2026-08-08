@@ -172,6 +172,7 @@ class Distillation():
                 if self.loss == 'original':
                     loss = torch.nn.functional.mse_loss(xpred, xtarget)
                 else:    # self.loss == 'modified'
+                    #* This is similar to the target calculation of Salimans and Ho
                     vtarget = (xt - xtarget) / dt_student
 
                     loss = torch.nn.functional.mse_loss(vtarget, v_student)

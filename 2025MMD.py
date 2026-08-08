@@ -34,8 +34,8 @@ class MMD():
         50k fid with S=52:    ~26.14
 
     Distillation results:
-        50k fid with 2x distill / S=256:    6.6    >    12.15
-        50k fid with 3x distill / S=171:
+        50k fid with 2x distill / S=256:    6.6    >    12.15    /    7.41
+        50k fid with 3x distill / S=171:    6.6    >    15.63    /    8.71
         50k fid with 4x distill / S=128:
         50k fid with 5x distill / S=103:
         50k fid with 10x distill / S=52:

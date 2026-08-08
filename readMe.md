@@ -12,14 +12,10 @@
 - *2026Han.py* implements the endpoint distillation algorithm as described in "2026 - Han et al - DistillKac"
 - *2026Zastrau.py* implements the DSB-FM algorithm as described in my master thesis
 
+# Run the models
+
+All models are written such that simply running the files without any arguments begins training and evaluating a base configuration of the respective models.
+
 # Related repositories
 
 For the logs of the training runs see [Link](https://github.com/DanielZastrau/Logs)
-
-### Good to have
-
-In VsCode I recommend to install the extension **Colorful Comments**, as I tried to provide hints and else throughout the code, which are a lot more visible if they can be discerned via color.
-
-- ! comments denote something important
-- TODO - comments denote something I have yet to resolve
-- \* - comments denote a paper or source, where something is taken from
