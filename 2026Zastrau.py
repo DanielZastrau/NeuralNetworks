@@ -15,6 +15,7 @@ from Cluster.utils.nn_utils import timestep_embedding
 class DSBFM():
     """DSB-FM as describe in my master thesis
 
+    These were all with S=1_024
     [01.08.26]    Run: zastrau     Reduced LR to 1e-4
             Min 2k FID at 400k iterations:    ~54
             With the reduced learning rate the Fid score trajectory also looks better, and is more stably trending downward
@@ -30,8 +31,11 @@ class DSBFM():
             Min 2k FID at 400k iterations:    ~32.8
             50k FID:    9.3
 
-    50k fid with S=512:
-        
+    50k fid with S=512:    16.65
+    50k fid with S=342:
+    50k fid with S=256:
+    50k fid with S=205:
+    
     I have some further ideas what one could do to improve generative performance, but I am kinda over it.
     
     Thoughts:

@@ -199,6 +199,7 @@ class Kac():
 
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+        """This outputs the velocity field."""
 
         if not isinstance(t, torch.Tensor) or t.dim() == 0:
             t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
@@ -325,7 +326,7 @@ class Kac():
                             dt = t - self.epsilon
 
                         pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
-                        xt = xt - pred_v * dt
+                        xt = xt - dt * pred_v
 
                 elif self.integrator == 'heun':
 

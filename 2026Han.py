@@ -33,6 +33,7 @@ class GenerativeModel(Protocol):
     # used by duong and karras
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x: torch.Tensor,
                  aug_cond: Optional[torch.Tensor]) -> torch.Tensor:
+        """This should be outputting the predicted velocity field."""
         ...
 
     # ! specific to the individual models
@@ -61,7 +62,8 @@ class GenerativeModel(Protocol):
 
 class Distillation():
 
-    def __init__(self, which: str, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module, student_steps: int = 100, teacher_substeps: int = 100):
+    def __init__(self, which: str, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module,
+                 student_steps: int = 100, teacher_substeps: int = 100, loss: str = 'original'):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -76,6 +78,8 @@ class Distillation():
 
         self.student_steps = student_steps
         self.teacher_substeps = teacher_substeps
+
+        self.loss = loss
 
         self.epsilon = 1e-5
 
@@ -139,9 +143,9 @@ class Distillation():
             if 'Karras' in self.which:
                 loss = self.update_karras(x0=x0)
 
-            else:
+            else:    # Duong simple, Mmd, Song, Zastrau
 
-                if self.which == '2025Mmd':
+                if self.which == '2025Mmd':    # in the future this will also have Zastrau, since there data augmentation is also used 
                     x0_aug, aug_cond = self.model.augmentation_pipeline(x0)
                 else:
                     x0_aug, aug_cond = x0, None
@@ -157,15 +161,20 @@ class Distillation():
                     for step in range(self.teacher_substeps):
                         tprime = t - step * dt_teacher
 
-                        v = self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=aug_cond)
-                        xtarget = xtarget - dt_teacher * v
+                        v_teacher = self.model.model_fn(model=self.teacher, t=tprime, x=xtarget, aug_cond=aug_cond)
+                        xtarget = xtarget - dt_teacher * v_teacher
 
                 #? Euler stepping with the student
                 xpred = xt.clone()
-                v = self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=aug_cond)
-                xpred = xpred - dt_student * v
+                v_student = self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=aug_cond)
+                xpred = xpred - dt_student * v_student
 
-                loss = torch.nn.functional.mse_loss(xpred, xtarget)
+                if self.loss == 'original':
+                    loss = torch.nn.functional.mse_loss(xpred, xtarget)
+                else:    # self.loss == 'modified'
+                    vtarget = (xt - xtarget) / dt_student
+
+                    loss = torch.nn.functional.mse_loss(vtarget, v_student)
 
             print(f'Loss:  {loss.item()}')
             loss.backward()
@@ -312,6 +321,7 @@ if __name__=='__main__':
     parser.add_argument('--which', type=str, required=True, choices=['2026Duong', '2026Zastrau', '2025Mmd', '2022Karras', '2021Song'])
     parser.add_argument('--student-steps', type=int, required=True)
     parser.add_argument('--teacher-substeps', type=int, required=True)
+    parser.add_argument('--loss', type=str, default='original', choices=['original', 'vspace'])
     args = parser.parse_args()
 
     if args.which == '2026Duong':
@@ -338,7 +348,10 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
-    Distillery = Distillation(which = args.which, model=model, student=student, teacher=teacher, student_steps=args.student_steps, teacher_substeps=args.teacher_substeps)
+    Distillery = Distillation(which=args.which, model=model, student=student, teacher=teacher,
+                              student_steps=args.student_steps, teacher_substeps=args.teacher_substeps,
+                              loss=args.loss)
+    
     if args.what == 'full' or args.what == 'distill':
         Distillery.routine()
 

@@ -34,7 +34,7 @@ class MMD():
         50k fid with S=52:    ~26.14
 
     Distillation results:
-        50k fid with 2x distill / S=256:
+        50k fid with 2x distill / S=256:    6.6    >    12.15
         50k fid with 3x distill / S=171:
         50k fid with 4x distill / S=128:
         50k fid with 5x distill / S=103:
@@ -123,6 +123,7 @@ class MMD():
         return pre_z, z
 
     def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+        """This outputs the velocity field."""
 
         if not isinstance(t, torch.Tensor) or t.dim() == 0:
             t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
@@ -232,7 +233,7 @@ class MMD():
                 for t in time_steps:
 
                     pred_v = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
-                    xt = xt - pred_v * dt
+                    xt = xt - dt * pred_v
         
                 if amount == 50_000:
                     print(f'sampled {j * 512 + how_many} / 50_000')
