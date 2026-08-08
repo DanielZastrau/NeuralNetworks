@@ -32,9 +32,10 @@ class DSBFM():
             50k FID:    9.3
 
     50k fid with S=512:    16.65
-    50k fid with S=342:
-    50k fid with S=256:
-    50k fid with S=205:
+    50k fid with S=342:    22.76
+    50k fid with S=256:    28.13
+    50k fid with S=205:    32.31
+    50k fid with S=103:    48.49
     
     I have some further ideas what one could do to improve generative performance, but I am kinda over it.
     
