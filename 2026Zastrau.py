@@ -156,7 +156,7 @@ class DSBFM():
 
             pred_v_scaled = model(x, timesteps = None, emb_override=emb)
 
-        gt = self.g(t=t)
+        gt = self.g(t=t).view(-1, *([1] * (x.dim() - 1)))
 
         return pred_v_scaled / gt
 
