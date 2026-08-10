@@ -42,11 +42,18 @@ class Kac():
             50k FID with S=20:    38.4
             50k FID with S=10:    101.59
 
-    Distilling 50k FID results:
-        Base model 2x:    5.1    >    5.61
-        Base model 3x:    5.1    >    5.82
-        Base model 4x:    5.1    >    5.79
-        Base model 5x:    5.1    >    5.68
+    Distilling 50k FID results x-target:
+        Base model 2x:    5.1    >    5.61    <    7.4
+        Base model 3x:    5.1    >    5.82    <    14.7
+        Base model 4x:    5.1    >    5.79    <    26.0
+        Base model 5x:    5.1    >    5.68    <    38.4
+        Base model 10x:    5.1    >    
+
+    Distillation 50k FID results v-target:
+        Base model 2x:    5.1    >    5.64    <    7.4
+        Base model 3x:    5.1    >    5.66    <    14.7
+        Base model 4x:    5.1    >    
+        Base model 5x:    5.1    >    
         Base model 10x:    5.1    >    
             
     Augmented model + Euler integrator + uniform schedule
