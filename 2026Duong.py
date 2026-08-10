@@ -1,5 +1,6 @@
 import os
 import argparse
+import time
 
 import torch
 import torchvision
@@ -52,7 +53,7 @@ class Kac():
     Distillation 50k FID results v-target:
         Base model 2x:    5.1    >    5.64    <    7.4
         Base model 3x:    5.1    >    5.66    <    14.7
-        Base model 4x:    5.1    >    
+        Base model 4x:    5.1    >    5.68    <    26.0
         Base model 5x:    5.1    >    
         Base model 10x:    5.1    >    
             
@@ -526,6 +527,8 @@ class Kac():
                     
         # ! Final Fid evaluation on 50_000 samples
 
+        t = time.time()
+
         # Load the best model
         self.get_model()
         self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
@@ -548,6 +551,7 @@ class Kac():
         ema_score = metrics['frechet_inception_distance']
 
         print(f"Tested the ema model. FID Score (50_000 samples): {ema_score:.4f}")
+        print(f"It took    {time.time() - t}  seconds.")
 
 if __name__ == '__main__':
 
