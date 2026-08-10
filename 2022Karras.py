@@ -32,6 +32,9 @@ class EDM():
         50k fid with S=5:    37.8
         50k fid with S=4:    103.4
 
+    Distillation results
+        2x / S=9:    2.58    >    3.81    <    3.64
+
     Their best 50k fid with S=18:    ~1.98
 
     

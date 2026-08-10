@@ -35,10 +35,10 @@ class DDPMppCont():
         50k fid with S=18:    34.85
         50k fid with S=9:     111.19
 
-    Distillation results
-        2x / S=45:
-        3x / S=30:
-        4x / S=23:
+    Distillation results x target
+        2x / S=45:    3.93    >    3.22    <    7.16
+        3x / S=30:    3.93    >    3.43    <    13.91
+        4x / S=23:    3.93    >    3.92    <    22.63
         5x / S=18:
         10x / S=9:
 

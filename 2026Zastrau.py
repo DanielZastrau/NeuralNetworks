@@ -31,6 +31,7 @@ class DSBFM():
             Min 2k FID at 400k iterations:    ~32.8
             50k FID:    9.3
 
+    50k fid with S=1_024:    9.3    <<<    Baseline
     50k fid with S=512:    16.65
     50k fid with S=342:    22.76
     50k fid with S=256:    28.13
@@ -48,7 +49,7 @@ class DSBFM():
                 Therefore, we scale the network predictions to a stable range, by pulling out the divergent factor.
     """
 
-    def __init__(self, which: str = 'simple', S: int = 1_024):
+    def __init__(self, which: str = 'simple', S: int = 1_024, load_teacher: bool = False):
 
         self.which = which
 
@@ -86,6 +87,11 @@ class DSBFM():
 
         print(f'Training the model:    {self.which}')
 
+        if load_teacher:
+
+            self.get_model()
+            self.model.load_state_dict(torch.load(self.score_save_path, map_location=self.device))
+
     def f(self, t: torch.Tensor):
 
         return 1 - t
@@ -98,7 +104,9 @@ class DSBFM():
 
         return (4 * t * (1 - t)**2) / ((1 + t) ** 2)
 
-    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+    def model_fn_interior(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+        """This outputs the scaled velocity field, which is why the weight has the division by g_t**2.
+        This was done for stability purposes"""
 
         if not isinstance(t, torch.Tensor) or t.dim() == 0:
             t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
@@ -122,6 +130,36 @@ class DSBFM():
 
             return model(x, timesteps = None, emb_override=emb)
 
+
+    def model_fn(self, model: torch.nn.Module, t: torch.Tensor | float, x:torch.Tensor, aug_cond: torch.Tensor | None):
+        """This outputs the true (unscaled) velocity field, which is used in the distillation module."""
+
+        if not isinstance(t, torch.Tensor) or t.dim() == 0:
+            t = torch.full((x.shape[0],), float(t), dtype=torch.float32, device=self.device)
+        elif t.shape[0] != x.shape[0]:
+            t = t.expand((x.shape[0], ))
+
+        if self.which == 'simple':
+
+            pred_v_scaled = model(x, t * 1_000)
+
+        else:
+            active_model = getattr(model, "module", model)
+
+            t_emb = timestep_embedding(t * 1_000, self.model_channels)
+            emb = active_model.time_embed(t_emb)
+
+            if aug_cond is None:
+                aug_cond = torch.zeros((x.shape[0], 9), dtype=torch.float32, device=self.device)
+
+            emb = emb + active_model.aug_proj(aug_cond)
+
+            pred_v_scaled = model(x, timesteps = None, emb_override=emb)
+
+        gt = self.g(t=t)
+
+        return pred_v_scaled / gt
+
     def get_model(self):
 
         self.model = UNetModel(image_size=self.data.data_dims.size, in_channels=self.data.data_dims.channels, out_channels=self.data.data_dims.channels,
@@ -144,6 +182,18 @@ class DSBFM():
                                                   end_factor=1.0,
                                                   total_iters=self.lr_warmup)
 
+    def noisify(self, t: torch.Tensor, x0: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+
+        z = torch.randn_like(x0, device=self.device, dtype=torch.float32)
+
+        ft = self.f(t=t).view(-1, *([1] * (x0.dim() - 1)))
+        gt = self.g(t=t).view(-1, *([1] * (x0.dim() - 1)))
+
+        # [B, C, H, W]
+        xt = ft * x0 + gt * z
+
+        return xt, z
+
     def loss(self, model: torch.nn.Module, x0: torch.Tensor):
 
         if self.which == 'simple':
@@ -155,15 +205,11 @@ class DSBFM():
         t = torch.rand((x0.shape[0],), device=self.device)
         t = torch.clamp(t, min=self.epsilon)
 
-        z = torch.randn_like(x0, device=self.device, dtype=torch.float32)
-
-        ft = self.f(t=t).view(-1, *([1] * (x0.dim() - 1)))
         gt = self.g(t=t).view(-1, *([1] * (x0.dim() - 1)))
 
-        # [B, C, H, W]
-        xt = ft * x0_aug + gt * z
+        xt, z = self.noisify(t=t, x0=x0_aug)
 
-        pred_v_scaled = self.model_fn(model=model, t=t, x=xt, aug_cond=aug_cond)
+        pred_v_scaled = self.model_fn_interior(model=model, t=t, x=xt, aug_cond=aug_cond)
         # target_v = -x0_aug + 0.5 * gt**(-1) * z
         target_v_scaled = -x0_aug * gt + 0.5 * z
 
@@ -199,7 +245,7 @@ class DSBFM():
                     gt = self.g(t=t_tensor).view(-1, *([1] * (xT.dim() - 1)))
 
                     # [B,]
-                    pred_v_scaled = self.model_fn(model=model, t=t, x=xt, aug_cond=None)
+                    pred_v_scaled = self.model_fn_interior(model=model, t=t, x=xt, aug_cond=None)
 
                     # Unscale to recover the actual velocity
                     pred_v = pred_v_scaled / gt

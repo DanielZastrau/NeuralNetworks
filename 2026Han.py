@@ -89,7 +89,8 @@ class Distillation():
 
         self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student.pth')
 
-        print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.')
+        print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    \
+              {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.  Loss target:    {loss}')
 
     def get_ema(self):
 
@@ -145,7 +146,7 @@ class Distillation():
 
             else:    # Duong simple, Mmd, Song, Zastrau
 
-                if self.which == '2025Mmd':    # in the future this will also have Zastrau, since there data augmentation is also used 
+                if self.which == '2025Mmd' or self.which == '2026Zastrau':
                     x0_aug, aug_cond = self.model.augmentation_pipeline(x0)
                 else:
                     x0_aug, aug_cond = x0, None
@@ -169,9 +170,10 @@ class Distillation():
                 v_student = self.model.model_fn(model=self.student, t=t, x=xpred, aug_cond=aug_cond)
                 xpred = xpred - dt_student * v_student
 
+
                 if self.loss == 'original':
                     loss = torch.nn.functional.mse_loss(xpred, xtarget)
-                else:    # self.loss == 'modified'
+                else:    # self.loss == 'vspace'
                     #* This is similar to the target calculation of Salimans and Ho
                     vtarget = (xt - xtarget) / dt_student
 
@@ -315,7 +317,8 @@ class Distillation():
 
 if __name__=='__main__':
     """Using importlib instead of normal imports, because I already committed to a naming convention of the files and I don't
-    want to rename them all."""
+    want to rename them all.
+    """
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--what', type=str, default='full', choices=['full', 'distill', 'eval'])
@@ -328,6 +331,12 @@ if __name__=='__main__':
     if args.which == '2026Duong':
         duong_module = importlib.import_module('2026Duong')
         model = duong_module.Kac(which='simple', schedule='uniform', integrator='euler', S=100, load_teacher=True)
+        teacher = model.model
+        student = copy.deepcopy(teacher)
+
+    elif args.which == '2026Zastrau':
+        zastrau_module = importlib.import_module('2026Zastrau')
+        model = zastrau_module.DSBFM(which='augmented', load_teacher=True)
         teacher = model.model
         student = copy.deepcopy(teacher)
 
