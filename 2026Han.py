@@ -88,7 +88,7 @@ class Distillation():
             self.I = 50_000 * teacher_substeps
         else:    # self.teacher_substeps == 20:
             self.I = 100_000
-            
+
         self.lr = 1e-4
         self.lr_warmup = int(self.I * 0.05)
 
@@ -343,7 +343,7 @@ if __name__=='__main__':
     parser.add_argument('--student-steps', type=int, required=True)
     parser.add_argument('--teacher-substeps', type=int, required=True)
     parser.add_argument('--loss', type=str, default='original', choices=['original', 'vspace'])
-    parser.add_argument('--score_checking', type=bool, action='store_true')
+    parser.add_argument('--score-checking', type=bool, action='store_true')
     args = parser.parse_args()
 
     if args.which == '2026Duong':
