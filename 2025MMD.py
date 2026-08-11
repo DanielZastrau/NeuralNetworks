@@ -38,7 +38,7 @@ class MMD():
         50k fid with 3x distill / S=171:    6.6    >    15.63    <    8.71
         50k fid with 4x distill / S=128:    6.6    >    20.60    <    10.32
         50k fid with 5x distill / S=103:    6.6    >    25.22    <    12.46
-        50k fid with 10x distill / S=52:
+        50k fid with 10x distill / S=52:    6.6    >    58.39    <    26.14
 
     Distillation results v target:
         50k fid with 2x distill / S=256:    6.6    >    8.69    <    7.41
@@ -218,6 +218,8 @@ class MMD():
         return torch.nn.functional.mse_loss(pred, target)
 
     def sample(self, model: torch.nn.Module, amount: int):
+
+        print(f'Sampling with    {self.S}  many steps.')
 
         samples = []
 

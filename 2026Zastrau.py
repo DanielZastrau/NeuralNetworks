@@ -37,6 +37,20 @@ class DSBFM():
     50k fid with S=256:    28.13
     50k fid with S=205:    32.31
     50k fid with S=103:    48.49
+
+    Distillation with x-target.
+        2x,  S=512:    9.3    >    8.84    <    16.65
+        3x,  S=342:    9.3    >    9.59    <    22.76
+        4x,  S=256:    9.3    >    8.85    <    28.13
+        5x,  S=205:    9.3
+        10x, S=103:    9.3
+        
+    Distillation with v-target.
+        2x,  S=512:    9.3    >    8.73    <    16.65
+        3x,  S=342:    9.3    >    8.60    <    22.76
+        4x,  S=256:    9.3
+        5x,  S=205:    9.3
+        10x, S=103:    9.3
     
     I have some further ideas what one could do to improve generative performance, but I am kinda over it.
     
