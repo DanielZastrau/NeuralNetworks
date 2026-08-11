@@ -192,7 +192,7 @@ class Distillation():
             self.scheduler.step()
             self.ema.update_parameters(self.student)
 
-            if (iteration + 1) % 10_000 == 0:
+            if (iteration + 1) % 10_000 == 0 and self.score_checking:
                 self.eval(model=self.ema)
 
             if (iteration + 1) % 20_000 == 0:
