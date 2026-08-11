@@ -84,7 +84,11 @@ class Distillation():
 
         self.epsilon = 1e-5
 
-        self.I = 50_000 * teacher_substeps
+        if self.teacher_substeps < 20:
+            self.I = 50_000 * teacher_substeps
+        else:    # self.teacher_substeps == 20:
+            self.I = 100_000
+            
         self.lr = 1e-4
         self.lr_warmup = int(self.I * 0.05)
 
