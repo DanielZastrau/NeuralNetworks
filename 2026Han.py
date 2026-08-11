@@ -63,7 +63,8 @@ class GenerativeModel(Protocol):
 class Distillation():
 
     def __init__(self, which: str, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module,
-                 student_steps: int = 100, teacher_substeps: int = 100, loss: str = 'original'):
+                 student_steps: int = 100, teacher_substeps: int = 100, loss: str = 'original',
+                 score_checking: bool = False):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -88,6 +89,8 @@ class Distillation():
         self.lr_warmup = int(self.I * 0.05)
 
         self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student.pth')
+
+        self.score_checking = score_checking
 
         print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    \
               {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.  Loss target:    {loss}')
@@ -189,10 +192,14 @@ class Distillation():
             self.scheduler.step()
             self.ema.update_parameters(self.student)
 
+            if (iteration + 1) % 10_000 == 0:
+                self.eval(model=self.ema)
+
             if (iteration + 1) % 20_000 == 0:
                 uncompiled_model = getattr(self.ema.module, "_orig_mod", self.ema.module)
                 torch.save(uncompiled_model.state_dict(), self.student_save_path)
                 print(f"saved student model to:  {self.student_save_path}    at iteration {iteration}")
+
 
     def update_karras(self, x0: torch.Tensor):
 
@@ -284,21 +291,27 @@ class Distillation():
         weight = self.model.weight(student_ti).view(-1, *([1] * (x0.dim() - 1)))
         return (weight * torch.nn.functional.mse_loss(xpred, xtarget, reduction='none')).mean()
 
-    def eval(self):
+    def eval(self, model: torch.nn.Module | None = None):
 
         #! Final fid evaluation on 50k samples
         
-        # Load the best model
-        self.model.get_model()
-        self.model.model.load_state_dict(torch.load(self.student_save_path, map_location=self.device))
+        if model is None:
+            # Load the best model
+            self.model.get_model()
+            self.model.model.load_state_dict(torch.load(self.student_save_path, map_location=self.device))
+
+            eval_model = self.model.model
+        else:
+            eval_model = model
+
         self.model.S = self.student_steps
 
         print(f'Evaluating    {self.student_save_path}.')
 
         eval_ds = self.data.get_dataset_for_full_eval()
 
-        self.model.model.eval()
-        samples = self.model.sample(model=self.model.model, amount=50_000)
+        eval_model.eval()
+        samples = self.model.sample(model=eval_model, amount=50_000)
 
         gen_ds = Uint8Dataset(to_uint8_rgb(samples, self.data))
 
@@ -326,6 +339,7 @@ if __name__=='__main__':
     parser.add_argument('--student-steps', type=int, required=True)
     parser.add_argument('--teacher-substeps', type=int, required=True)
     parser.add_argument('--loss', type=str, default='original', choices=['original', 'vspace'])
+    parser.add_argument('--score_checking', type=bool, action='store_true')
     args = parser.parse_args()
 
     if args.which == '2026Duong':
@@ -360,7 +374,7 @@ if __name__=='__main__':
 
     Distillery = Distillation(which=args.which, model=model, student=student, teacher=teacher,
                               student_steps=args.student_steps, teacher_substeps=args.teacher_substeps,
-                              loss=args.loss)
+                              loss=args.loss, score_checking=args.score_checking)
     
     if args.what == 'full' or args.what == 'distill':
         Distillery.routine()
