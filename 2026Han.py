@@ -64,7 +64,7 @@ class Distillation():
 
     def __init__(self, which: str, model: GenerativeModel, student: torch.nn.Module, teacher: torch.nn.Module,
                  student_steps: int = 100, teacher_substeps: int = 100, loss: str = 'original',
-                 score_checking: bool = False):
+                 score_checking: bool = False, I: int = 100_000):
 
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -84,10 +84,7 @@ class Distillation():
 
         self.epsilon = 1e-5
 
-        if self.teacher_substeps < 20:
-            self.I = 50_000 * teacher_substeps
-        else:    # self.teacher_substeps == 20:
-            self.I = 100_000
+        self.I = I
 
         self.lr = 1e-4
         self.lr_warmup = int(self.I * 0.05)
@@ -344,6 +341,7 @@ if __name__=='__main__':
     parser.add_argument('--teacher-substeps', type=int, required=True)
     parser.add_argument('--loss', type=str, default='original', choices=['original', 'vspace'])
     parser.add_argument('--score-checking', action='store_true')
+    parser.add_argument('--I', type=int, default=100_000, choices=[-1, 100_000])
     args = parser.parse_args()
 
     if args.which == '2026Duong':
@@ -376,9 +374,15 @@ if __name__=='__main__':
         teacher = model.model
         student = copy.deepcopy(teacher)
 
+    I: int
+    if args.I == -1:
+        I = args.teacher_substeps * 50_000
+    else:
+        I = args.I
+
     Distillery = Distillation(which=args.which, model=model, student=student, teacher=teacher,
                               student_steps=args.student_steps, teacher_substeps=args.teacher_substeps,
-                              loss=args.loss, score_checking=args.score_checking)
+                              loss=args.loss, score_checking=args.score_checking, I=I)
     
     if args.what == 'full' or args.what == 'distill':
         Distillery.routine()
