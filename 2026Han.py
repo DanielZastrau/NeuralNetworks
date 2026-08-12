@@ -94,7 +94,8 @@ class Distillation():
         self.score_checking = score_checking
 
         print(f'Distilling    {self.model.score_save_path},  to a    {student_steps}  student with    \
-              {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.  Loss target:    {loss}')
+              {teacher_substeps}  many teacher substeps and saving to    {self.student_save_path}.  Loss target:    {loss}. \
+                Iterations:    {self.I}.')
 
     def get_ema(self):
 
