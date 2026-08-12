@@ -37,7 +37,7 @@ class DDPMppCont():
         50k fid with S=5:     239.55
 
     Distillation results x target
-        2x / S=45:    3.93    >    3.22    <    7.16
+        2x / S=45:    3.93    >    3.22    <    7.16    <<<    This even beats their reported fid score with 23x less sampling steps.
         3x / S=30:    3.93    >    3.43    <    13.91
         4x / S=23:    3.93    >    3.92    <    22.63
         5x / S=18:    3.93    >    3.94    <    34.85
