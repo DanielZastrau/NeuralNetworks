@@ -56,7 +56,8 @@ class Kac():
         Base model 3x:    5.1    >    5.66    <    14.7
         Base model 4x:    5.1    >    5.68    <    26.0
         Base model 5x:    5.1    >    5.69    <    38.4
-        Base model 10x:    5.1    >    
+        Base model 10x:   5.1    >    5.52    <    101.59
+        20x, S=5:         5.1    >    6.17    <    201.51
             
     Augmented model + Euler integrator + uniform schedule
         after 400k iterations

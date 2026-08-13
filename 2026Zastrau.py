@@ -50,8 +50,9 @@ class DSBFM():
         2x,  S=512:    9.3    >    8.73    <    16.65
         3x,  S=342:    9.3    >    8.60    <    22.76
         4x,  S=256:    9.3    >    8.62    <    28.13
-        5x,  S=205:    9.3
-        10x, S=103:    9.3
+        5x,  S=205:    9.3    >    8.65    <    32.31
+        10x, S=103:    9.3    >
+        20x, S=52:     9.3    >
     
     I have some further ideas what one could do to improve generative performance, but I am kinda over it.
     
