@@ -46,7 +46,7 @@ class DDPMppCont():
     Distillation results v target
         2x / S=45:    3.93    >    3.45    <    7.16
         3x / S=30:    3.93    >    4.19    <    13.91
-        4x / S=23:    3.93    >    x    <    22.63
+        4x / S=23:    3.93    >    5.56    <    22.63
         5x / S=18:    3.93    >    x    <    34.85
         10x / S=9:
 
