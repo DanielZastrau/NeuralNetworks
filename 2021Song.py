@@ -41,14 +41,15 @@ class DDPMppCont():
         3x / S=30:    3.93    >    3.43    <    13.91
         4x / S=23:    3.93    >    3.92    <    22.63
         5x / S=18:    3.93    >    3.94    <    34.85
-        10x / S=9:
+        10x / S=9:    3.93    >    3.96    <    111.19
 
     Distillation results v target
         2x / S=45:    3.93    >    3.45    <    7.16
-        3x / S=30:    3.93    >    4.19    <    13.91
-        4x / S=23:    3.93    >    5.56    <    22.63
-        5x / S=18:    3.93    >    x    <    34.85
-        10x / S=9:
+        3x / S=30:    3.93    >    3.48    <    13.91
+        4x / S=23:    3.93    >    3.49    <    22.63
+        5x / S=18:    3.93    >    3.52    <    34.85
+        10x / S=9:    3.93    >    4.27    <    111.19
+        20x / S=5:    3.93    >    5.28    <    239.55
 
     Thoughts:
         - Since fid score with 205 sampling steps was better than fid score with 1_024 sampling steps, we search even lower. Originally,

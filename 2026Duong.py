@@ -49,7 +49,7 @@ class Kac():
         Base model 3x:    5.1    >    5.82    <    14.7
         Base model 4x:    5.1    >    5.79    <    26.0
         Base model 5x:    5.1    >    5.68    <    38.4
-        Base model 10x:    5.1    >    123.23    <    101.59
+        Base model 10x:   5.1    >    5.79    <    101.59
 
     Distillation 50k FID results v-target:
         Base model 2x:    5.1    >    5.64    <    7.4

@@ -89,7 +89,12 @@ class Distillation():
         self.lr = 1e-4
         self.lr_warmup = int(self.I * 0.05)
 
-        self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student.pth')
+        addendum: str
+        if self.loss == 'original':
+            addendum = 'x'
+        else:
+            addendum = 'v'
+        self.student_save_path = os.path.join(self.model.curr_dir, f'{self.student_steps}student{addendum}.pth')
 
         self.score_checking = score_checking
 

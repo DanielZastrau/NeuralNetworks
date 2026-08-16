@@ -35,19 +35,19 @@ class MMD():
         50k fid with S=26:    ~50.61
 
     Distillation results x target:
-        50k fid with 2x distill / S=256:    6.6    >    12.15    <    7.41
-        50k fid with 3x distill / S=171:    6.6    >    15.63    <    8.71
-        50k fid with 4x distill / S=128:    6.6    >    20.60    <    10.32
-        50k fid with 5x distill / S=103:    6.6    >    25.22    <    12.46
-        50k fid with 10x distill / S=52:    6.6    >    58.39    <    26.14
+        50k fid with 2x distill / S=256:    6.6    >    7.35    <    7.41
+        50k fid with 3x distill / S=171:    6.6    >    7.72    <    8.71
+        50k fid with 4x distill / S=128:    6.6    >    8.09    <    10.32
+        50k fid with 5x distill / S=103:    6.6    >    8.27    <    12.46
+        50k fid with 10x distill / S=52:    6.6    >    8.44    <    26.14
 
     Distillation results v target:
         50k fid with 2x distill / S=256:    6.6    >    8.69    <    7.41
         50k fid with 3x distill / S=171:    6.6    >    8.43    <    8.71
         50k fid with 4x distill / S=128:    6.6    >    8.47    <    10.32
         50k fid with 5x distill / S=103:    6.6    >    8.38    <    12.46
-        50k fid with 10x distill / S=52:
-        50k fid with 20x distill / S=26:
+        50k fid with 10x distill / S=52:    6.6    >    8.56    <    26.14
+        50k fid with 20x distill / S=26:    6.6    >    8.95    <    50.61
         
     With the bigger model:
         Min 2k FID with S=1_024:    ~28    I was stupid and overwrote the output file with a new job, before I could make the grid...
