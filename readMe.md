@@ -19,3 +19,5 @@ All models are written such that simply running the files without any arguments 
 # Related repositories
 
 For the logs of the training runs see [Link](https://github.com/DanielZastrau/Logs)
+
+# Currently paused, since I have no access to a cuda gpu, which makes testing basically impossible.
