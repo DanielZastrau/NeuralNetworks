@@ -6,13 +6,15 @@ import torchvision
 import torch_fidelity
 import matplotlib.pyplot as plt
 
+from GenerativeModel import GenerativeModel
+
 from Cluster.utils.dataHandling import DataProvider
 from Cluster.utils.dataAugmentation import KarrasAugmentationPipeline
 from Cluster.utils.uint8_utils import Uint8Dataset, to_uint8_rgb
 from Cluster.networks.neuralNetworkOpenAI import UNetModel
 from Cluster.utils.nn_utils import timestep_embedding
 
-class DSBFM():
+class DSBFM(GenerativeModel):
     """DSB-FM as describe in my master thesis
 
     These were all with S=1_024
